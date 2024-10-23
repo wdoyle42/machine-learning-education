@@ -67,8 +67,6 @@ Student led assignment, using available data for a prediction task
 
 ### Tree-Based Methods
 
-- An introduction to classification and regression trees
-
 - Classification and Regression Trees (CART)
 
 - Random Forests
