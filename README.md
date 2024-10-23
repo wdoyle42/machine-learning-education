@@ -43,7 +43,7 @@ Student led assignment, using available data for a prediction task
 
 - Intro to tidymodels
 
-- Feautre engineering basics
+- Feature engineering basics
 
 ### Machine Learning Workflow
 
@@ -71,7 +71,7 @@ Student led assignment, using available data for a prediction task
 
 - Random Forests
 
-- Understanding hyperparemters in Random Forests
+- Understanding hyperparameters in Random Forests
 
 - Fitting and Tuning Parameters
 
