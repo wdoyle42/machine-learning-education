@@ -23,7 +23,11 @@ https://www.tmwr.org/
 
 Wickham et al, R for Data Science
 
+https://r4ds.hadley.nz/
+
 Chang, R Graphics Cookbook
+
+https://r-graphics.org/
 
 CS 229 Lecture notes
 
