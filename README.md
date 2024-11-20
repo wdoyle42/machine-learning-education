@@ -8,16 +8,51 @@ output:
 ## Will Doyle
 
 
+Machine learning constitutes a different field from statistics given its focus on 
+out-of-sample prediction as opposed to statistics' emphasis on 
+inference and estimation. While many of the same algorithms are used,
+the purpose of the two are quite distinct. In education, machine learning
+supports a variety of predictive tasks, but education researchers are 
+rarely trained in the development of machine learning models.
+
+This course will introduce the learner to machine learning in education settings
+The focus will be pragrmatic, with an emphasis on how various models
+are tuned in order to best provide out-of-sample predictions with the lowest
+loss rates. Learners will know how to train and deploy some widely-used models
+after taking the course. 
+
+## Evaluation
+
+*Problem Sets* 
+
+There will be 10 problem sets, each of which will be worth 10 points. Assignments 
+will constitute 50% of the final grade. 
+
+*Semester-Long Assignment*
+
+Students will create a deployable model trained on an existing dataset. 
+Students will write a manuscript describing their process and the nature of the model
+(predictive results and variable importance, as appropriate).This manuscript should be 
+a good first draft for a manuscript suitable for publication.  Students will also create a 
+github repository containing the code to create the model and the deployable model. Students may work either 
+alone or in a group of two on this assignment.
+
+There will be four check-in assignments, a draft of the final paper, and the paper. These will be
+referred to as "progress reports" draft and final version. 
+
 ## Required Texts
 
-James et al, An Introduction to Statistical Learning
+James et al, An Introduction to Statistical Learning 
 
 https://www.statlearning.com/
+
+Referred to as *ISLR*
 
 Kuhn and Silge Tidy Modeling with R
 
 https://www.tmwr.org/
 
+Referred to a *TMWR*
 
 ## Optional References:
 
@@ -25,9 +60,13 @@ Wickham et al, R for Data Science
 
 https://r4ds.hadley.nz/
 
+Referred to as *R4DS*
+
 Chang, R Graphics Cookbook
 
 https://r-graphics.org/
+
+Referred to as *R Graphics Cookbook*
 
 CS 229 Lecture notes
 
@@ -35,11 +74,8 @@ https://cs229.stanford.edu/main_notes.pdf
 
 https://cs229.stanford.edu/cs229-notes-decision_trees.pdf
 
-## Assignments
+Referred to as *CS 229*
 
-Weekly exercises
-
-Student led assignment, using available data for a prediction task
 
 ## Schedule of Topics
 
@@ -106,6 +142,7 @@ Student led assignment, using available data for a prediction task
 - Applications
 
 
+Assignment Due Dates
 
 
 
