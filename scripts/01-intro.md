@@ -18,7 +18,7 @@ interventions.
 
 ## Measure of accuracy
 
-We’ll root mean sqaure error (rmse) as our measure of accuracy
+We’ll use root mean sqaure error (rmse) as our measure of accuracy.
 
 ## Load libraries
 
@@ -55,7 +55,7 @@ library(tidymodels)
     ## ✖ dplyr::lag()      masks stats::lag()
     ## ✖ yardstick::spec() masks readr::spec()
     ## ✖ recipes::step()   masks stats::step()
-    ## • Learn how to get started at https://www.tidymodels.org/start/
+    ## • Dig deeper into tidy modeling with R at https://www.tmwr.org
 
 ``` r
 library(janitor)
@@ -91,8 +91,13 @@ x3gpatot: Final HS GPA x1region: Region of the country (f) x1locale:
 Locale (f) x1control: Control (f) x1iepflag: IEP Flag (f) x1stuedexpct:
 Student expectations for educational attainment (f) x1schooleng: Student
 engagement x1famincome: Family income (f) x1hhnumber: Number in
+household (f) x1par1emp: Parent’s employment status (f) x1par1edu:
+Parent’s education level (f) x1tmtscor: Math theta score in ninth grade
 
 ## Data Cleaning
+
+I need to properly code missing data, and then drop any cases with
+missing data. This won’t always be our approach.
 
 ``` r
 hs <- hs %>%
@@ -106,47 +111,75 @@ models. It integrates various stages of the modeling process, from data
 preprocessing to model evaluation, under a unified framework that’s easy
 to use and aligns with the principles of the `tidyverse`.
 
-**Philosophy**: - **Tidy Data Principles**: `tidymodels` is built on the
-same principles as the `tidyverse`, emphasizing clear, readable, and
-consistent code. It’s designed to work seamlessly with other `tidyverse`
-packages. - **Unified Interface**: It offers a consistent interface for
-various modeling tasks, regardless of the underlying model type.
+**Philosophy**:
 
-**Components**: - **`recipes`**: Provides tools for feature engineering
-and data preprocessing. It allows you to specify a series of steps to
-prepare your data for modeling. - **`parsnip`**: A unified interface for
-model specification. It allows you to define a model without committing
-to a specific computational engine. - **`workflows`**: Combines
-pre-processing steps from `recipes` and model specifications from
-`parsnip` into a single object to streamline the modeling process. -
-**`tune`**: Tools for model tuning, such as grid search and
-cross-validation. - **`yardstick`**: For model evaluation and metric
-calculation. - **`dials`**: Helps in creating tuning grids for different
-model parameters. - **`rsample`**: Provides infrastructure for data
-splitting and resampling, which is essential for model validation and
-testing.
+- **Tidy Data Principles**: `tidymodels` is built on the same principles
+  as the `tidyverse`, emphasizing clear, readable, and consistent code.
+  It’s designed to work seamlessly with other `tidyverse` packages.
 
-**Workflow**: - **Data Splitting**: Using `rsample`, you can create
-training and testing datasets. - **Preprocessing**: With `recipes`, you
-define a series of preprocessing steps like normalization, encoding
-categorical variables, and more. - **Model Specification**: Using
-`parsnip`, you specify the type of model you want (e.g., linear
-regression, decision tree) without choosing the computational engine
-(e.g., lm, xgboost). - **Combining Preprocessing and Modeling**:
-`workflows` lets you combine your preprocessing steps and model
-specification into a single object. - **Model Training**: Train your
-model on the training data. - **Model Evaluation**: Once trained, you
-can evaluate your model’s performance on the testing data using
-`yardstick`. - **Tuning (if needed)**: If your model has
-hyperparameters, you can use `tune` and `dials` to find the best
-parameters.
+- **Unified Interface**: It offers a consistent interface for various
+  modeling tasks, regardless of the underlying model type.
 
-**Advantages**: - **Flexibility**: Easily switch between different model
-types or computational engines without drastically changing your code. -
-**Consistency**: Regardless of the model type, the code structure
-remains consistent. - **Integration**: Designed to work seamlessly with
-other `tidyverse` packages, making it easier to integrate modeling into
-a broader data analysis pipeline.
+**Components**:
+
+- **`recipes`**: Provides tools for feature engineering and data
+  preprocessing. It allows you to specify a series of steps to prepare
+  your data for modeling.
+
+- **`parsnip`**: A unified interface for model specification. It allows
+  you to define a model without committing to a specific computational
+  engine.
+
+- **`workflows`**: Combines pre-processing steps from `recipes` and
+  model specifications from `parsnip` into a single object to streamline
+  the modeling process.
+
+- **`tune`**: Tools for model tuning, such as grid search and
+  cross-validation.
+
+- **`yardstick`**: For model evaluation and metric calculation.
+
+- **`dials`**: Helps in creating tuning grids for different model
+  parameters.
+
+- **`rsample`**: Provides infrastructure for data splitting and
+  resampling, which is essential for model validation and testing.
+
+**Workflow**:
+
+- **Data Splitting**: Using `rsample`, you can create training and
+  testing datasets.
+
+- **Preprocessing**: With `recipes`, you define a series of
+  preprocessing steps like normalization, encoding categorical
+  variables, and more.
+
+- **Model Specification**: Using `parsnip`, you specify the type of
+  model you want (e.g., linear regression, decision tree) without
+  choosing the computational engine (e.g., lm, xgboost).
+
+- **Combining Preprocessing and Modeling**: `workflows` lets you combine
+  your preprocessing steps and model specification into a single object.
+
+- **Model Training**: Train your model on the training data.
+
+- **Model Evaluation**: Once trained, you can evaluate your model’s
+  performance on the testing data using `yardstick`.
+
+- **Tuning (if needed)**: If your model has hyperparameters, you can use
+  `tune` and `dials` to find the best parameters.
+
+**Advantages**:
+
+- **Flexibility**: Easily switch between different model types or
+  computational engines without drastically changing your code.
+
+- **Consistency**: Regardless of the model type, the code structure
+  remains consistent.
+
+- **Integration**: Designed to work seamlessly with other `tidyverse`
+  packages, making it easier to integrate modeling into a broader data
+  analysis pipeline.
 
 Below I’ll use tidymodels to run a regresion predicting overall HS GPA
 from the incoming student characteristics.
@@ -167,23 +200,29 @@ train<-training(hs_split)
 test<-testing(hs_split)
 ```
 
-**`hs_split <- initial_split(hs)`**: - This line uses the
-`initial_split` function to divide the `cr` dataset into two parts. By
-default, `initial_split` typically allocates 75% of the data to the
-training set and the remaining 25% to the testing set, though this ratio
-can be adjusted. - The result, `cr_split`, is a special split object
-that contains information about which rows of the original `cr` dataset
-belong to the training set and which belong to the testing set.
+**`hs_split <- initial_split(hs)`**:
 
-**`train <- training(hs_split)`**: - Here, the `training` function
-extracts the training portion of the data from the `cr_split` object and
-assigns it to the `train` variable. This dataset will be used to train a
-machine learning model.
+- This line uses the `initial_split` function to divide the `cr` dataset
+  into two parts. By default, `initial_split` typically allocates 75% of
+  the data to the training set and the remaining 25% to the testing set,
+  though this ratio can be adjusted.
 
-**`test <- testing(hs_split)`**: - Similarly, the `testing` function
-extracts the testing portion of the data from the `cr_split` object and
-assigns it to the `test` variable. This dataset will be used to evaluate
-the performance of the trained model on unseen data.
+- The result, `cr_split`, is a special split object that contains
+  information about which rows of the original `cr` dataset belong to
+  the training set and which belong to the testing set.
+
+**`train <- training(hs_split)`**:
+
+- Here, the `training` function extracts the training portion of the
+  data from the `cr_split` object and assigns it to the `train`
+  variable. This dataset will be used to train a machine learning model.
+
+**`test <- testing(hs_split)`**:
+
+- Similarly, the `testing` function extracts the testing portion of the
+  data from the `cr_split` object and assigns it to the `test` variable.
+  This dataset will be used to evaluate the performance of the trained
+  model on unseen data.
 
 The code is setting up a linear regression model using the standard
 linear modeling engine in R.
@@ -195,16 +234,20 @@ hs_model<-linear_reg(mode="regression",engine="lm")
 **Detailed Explanation**:
 
 - **`linear_reg(mode="regression", engine="lm")`**:
+
   - **`linear_reg()`**: This function is from the `parsnip` package,
     which is part of the `tidymodels` framework. It’s used to specify a
     linear regression model.
+
   - **`mode="regression"`**: This argument specifies the type of
     modeling. In this case, it’s regression, which is used to predict a
     continuous outcome variable based on one or more predictor
     variables.
+
   - **`engine="lm"`**: This argument specifies the computational engine
     to use for the linear regression. The “lm” engine refers to R’s
     built-in `lm()` function for linear modeling.
+
 - **`hs_model`**: The specified linear regression model is then stored
   in the `hs_model` variable. This doesn’t train the model yet; it
   merely sets up the type of model and the engine to be used. Training
@@ -250,38 +293,56 @@ normalizing the data.
 **Detailed Explanation**:
 
 1.  **`hs_formula <- as.formula("x3gpatot~.")`**:
+
     - This creates a formula indicating that the variable `x3gpatot` is
       the outcome (or dependent variable) we want to predict, and the
       `.` means we want to use all other variables in the dataset as
       predictors (or independent variables).
+
 2.  **`recipe(hs_formula, data=train)`**:
+
     - The `recipe` function starts the specification of preprocessing
       steps. It uses the formula and the training data (`train`) as
       inputs.
+
 3.  **`update_role(x3gpatot, new_role = "outcome")`**:
+
     - This explicitly sets the role of the `x3gpatot` variable as the
       “outcome” or the variable we’re trying to predict.
+
 4.  **`step_other(all_nominal_predictors(), threshold = .01)`**:
+
     - For categorical (nominal) predictors, any categories that
       constitute less than 1% of the data will be lumped together into a
       new category, typically called “other”.
+
 5.  **`step_dummy(all_nominal_predictors())`**:
+
     - Converts categorical variables into dummy variables (also known as
       one-hot encoding). This is necessary because many modeling
       algorithms require numerical input.
+
 6.  **`step_filter_missing(all_predictors(), threshold = .1)`**:
+
     - This step removes any predictor variables that have more than 10%
       missing values.
+
 7.  **`step_naomit(all_outcomes(), all_predictors())`**:
+
     - Removes rows (observations) from the data where either the outcome
       or any of the predictor variables have missing values.
+
 8.  **`step_corr(all_predictors(), threshold = .95)`**:
+
     - Identifies and removes predictor variables that have a correlation
       higher than 0.95 with any other predictor. This helps in
       addressing multicollinearity.
+
 9.  **`step_zv(all_predictors())`**:
+
     - Removes predictor variables that have a zero variance, meaning
       they have the same value for all observations.
+
 10. **`step_normalize(all_predictors())`**:
 
 - Normalizes all predictor variables so they have a mean of 0 and a
@@ -342,16 +403,16 @@ hs_rec%>%prep()%>%bake(train)
     ## # A tibble: 8,331 × 47
     ##    x1txmtscor x1schooleng x3tgpatot x1par1edu_Bachelor.s.degree
     ##         <dbl>       <dbl>     <dbl>                       <dbl>
-    ##  1     -0.769      -0.107       1                        -0.507
-    ##  2     -0.405      -1.54        3                         1.97 
-    ##  3     -1.31       -1.19        2.5                      -0.507
-    ##  4      0.607      -0.554       3                         1.97 
-    ##  5      1.18       -0.389       3.5                      -0.507
-    ##  6      0.462       0.597       3                        -0.507
-    ##  7     -0.516       1.49        2.5                      -0.507
-    ##  8     -1.06       -0.389       2                        -0.507
-    ##  9      0.939      -1.54        4                         1.97 
-    ## 10      0.914       1.49        3                        -0.507
+    ##  1    -2.65         0.600       1.5                      -0.505
+    ##  2     0.854        0.482       3                         1.98 
+    ##  3     0.0862       0.600       3.5                      -0.505
+    ##  4     1.46         1.50        3.5                       1.98 
+    ##  5     1.51         0.600       2.5                       1.98 
+    ##  6    -0.0447      -1.55        3.5                      -0.505
+    ##  7     0.773       -1.24        3.5                      -0.505
+    ##  8     1.27        -1.24        4                        -0.505
+    ##  9    -0.826       -1.71        1.5                      -0.505
+    ## 10    -0.332        1.50        2                        -0.505
     ## # ℹ 8,321 more rows
     ## # ℹ 43 more variables: x1par1edu_High.school.diploma.or.GED <dbl>,
     ## #   x1par1edu_Less.than.high.school <dbl>, x1par1edu_Master.s.degree <dbl>,
@@ -361,17 +422,21 @@ hs_rec%>%prep()%>%bake(train)
     ## #   x1par1emp_P1.not.currently.working.for.pay <dbl>, …
 
 1.  **`hs_rec %>% prep()`**:
+
     - **`prep()`**: This function prepares the steps defined in the
       `cr_rec` recipe. It computes any required statistics or parameters
       needed for the transformations (e.g., mean and standard deviation
       for normalization) but doesn’t apply the transformations to the
       data yet. Think of it as getting the recipe ready for cooking but
       not actually cooking.
+
 2.  **`hs_rec %>% prep() %>% bake(train)`**:
+
     - **`bake()`**: Once the recipe is prepared with `prep()`, the
       `bake()` function is used to apply the transformations to a
       dataset. In this case, the transformations are applied to the
       `train` dataset.
+
     - Essentially, this sequence of functions means “prepare the
       transformations and then apply them to the `train` dataset.”
 
@@ -394,18 +459,25 @@ preprocessing steps (from `hs_rec`) and the modeling specification (from
 `hs_model`). It then trains the model using the `train` dataset.
 
 1.  **`workflow()`**:
+
     - This function initializes a workflow. In the `tidymodels`
       framework, a workflow is a way to bundle together preprocessing
       steps (like those defined in a recipe) and a model specification.
+
 2.  **`add_model(cr_model)`**:
+
     - This adds the model specification from `hs_model` (which was
       defined earlier) to the workflow. It tells the workflow what kind
       of model we’re planning to train.
+
 3.  **`add_recipe(cr_rec)`**:
+
     - This adds the data preprocessing steps from `hs_rec` (which were
       defined earlier) to the workflow. It tells the workflow how to
       preprocess the data before training the model.
+
 4.  **`fit(train)`**:
+
     - Once the workflow has both the model and the recipe, the `fit()`
       function is used to train the model using the `train` dataset.
       This involves applying the preprocessing steps to the training
@@ -432,7 +504,7 @@ test%>%
     ## # A tibble: 1 × 3
     ##   .metric .estimator .estimate
     ##   <chr>   <chr>          <dbl>
-    ## 1 rmse    standard       0.594
+    ## 1 rmse    standard       0.609
 
 The code calculates the Root Mean Squared Error (RMSE) for the
 predictions in the `test` dataset by comparing the predicted values
@@ -441,14 +513,19 @@ predictions in the `test` dataset by comparing the predicted values
 **Detailed Explanation**:
 
 1.  **`test %>%`**:
+
     - This takes the `test` dataset, which now contains both the actual
       values (`x3tgpatot`) and the predicted values (`.pred`), as the
       starting point for the subsequent operations.
+
 2.  **`rmse(truth="iss", estimate=.pred)`**:
+
     - The `rmse()` function from the `yardstick` package (part of
       `tidymodels`) is used to calculate the RMSE.
+
     - **`truth="x3tgpatot"`**: Specifies that the actual values are in
       the `x3tgpatot` column of the `test` dataset.
+
     - **`estimate=.pred`**: Specifies that the predicted values are in
       the `.pred` column of the `test` dataset.
 
@@ -535,33 +612,37 @@ hs_wf_full%>%
 **Detailed Explanation**:
 
 1.  **`hs_wf %>%`**:
+
     - This takes the trained workflow `cr_wf` as the starting point for
       the subsequent operations.
+
 2.  **`extract_fit_parsnip()`**:
+
     - This function extracts the results of the trained model from the
       workflow. In the context of a linear regression model (as
       indicated by previous interactions), this would typically include
       coefficients for each predictor variable.
+
 3.  **`tidy()`**:
+
     - This function, from the `broom` package, tidies the results of the
       model, converting them into a clean and standardized data frame
       format. For a linear regression model, this would typically result
       in a data frame with columns like `term` (the predictor variable
       name), `estimate` (the coefficient value), and others like
       `std.error`, `statistic`, and `p.value`.
+
 4.  **`arrange(-estimate)`**:
+
     - This arranges (or sorts) the results based on the `estimate`
       column in descending order (from highest to lowest coefficient
       value).
+
 5.  **`print(n=100)`**:
+
     - This displays the top 100 results after sorting. It’s especially
       useful if there are many predictor variables in the model and you
       want to see the ones with the highest coefficient values.
-
-Overall, this code is useful for understanding the impact and
-significance of different predictor variables in the trained model. The
-sorted list can give insights into which variables have the most
-substantial positive or negative effects on the outcome.
 
 ## Moving forward
 
