@@ -85,6 +85,10 @@ Referred to as *CS 229*
 
 - Feature engineering basics
 
+ISLR Chs. 1,2,3 and 6.1-6.2  (Skip 2.3 and 3.6, no exercises)
+
+TMWR Chs. 1,2, 3
+
 ### Machine Learning Workflow
 
 - Testing and Training
@@ -97,6 +101,12 @@ Referred to as *CS 229*
 
 - A complete workflow
 
+
+
+TMWR Chs. 4-8
+
+ISLR Ch. 5
+
 ### L1 and L2 Regularization, Elastic Net
 
 - Understanding hyperparameters
@@ -104,6 +114,10 @@ Referred to as *CS 229*
 - Measures of model fit: regression and classification
 
 - Tuning approaches: grid search, simulated annealing, genetic algorithms 
+
+ISLR ch. 10
+
+TMWR Ch. 14
 
 ### Tree-Based Methods
 
