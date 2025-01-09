@@ -13,6 +13,63 @@ output: html_document
 One of the key decisions for an analyst is which variables to include. We can make decisions about this using theory, or our understanding of the context, but we can also rely on computational approaches. This is known as *regularization* and it involves downweighting the importance of coefficients from a model based on the contribution that a predictor makes. We're going to make use of a regularization penalty known as the "lasso." The lasso downweights variables mostly be dropping variables that are highly correlated with one another, leaving only one of the correlated variables as contributors to the model. We set the degree to which this penalty will be implemented by setting the "penalty" variable in the model specification. (This is also called the L1 penalty, or L1 regularization)
 
 
+## Libraries
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+```
+
+
+
+
+## Load dataset
+```{r}
+hs<-read_csv("hsls_extract.csv")%>%clean_names()
+```
+
+
+## Data Cleaning
+```{r}
+hs <- hs %>%
+  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+  drop_na()
+```
+
+
+
+
+## Training/Testing
+
+
+```{r}
+hs_split<-initial_split(hs)
+
+hs_train<-training(hs_split)
+
+hs_test<-testing(hs_split)
+```
+
+
+## Recipe
+```{r}
+hs_formula<-as.formula("x3tgpatot~.")
+
+hs_rec<-recipe(hs_formula,data=train)%>%
+  update_role(x3tgpatot,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .01)%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_filter_missing(all_predictors(),threshold = .1)%>%
+  step_naomit(all_outcomes(),all_predictors())%>%
+  step_corr(all_predictors(),threshold = .95)%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+```
+
+
+
+
+
 Now we can update the model to use lasso, which will subset on a smaller number of covariates. In the `tidymodels` setup, ridge is alpha (mixture)=0, while lasso is alpha (mixture)=1.   https://parsnip.tidymodels.org/reference/glmnet-details.htm
 ```{r}
 penalty_spec<-.1
@@ -30,13 +87,13 @@ lasso_fit<-
 ## Define the Workflow
 
 ```{r}
-cr_wf<-workflow()
+hs_wf<-workflow()
 ```
 
 ## Add the Model
 
 ```{r}
-cr_wf<-cr_wf%>%
+hs_wf<-hs_wf%>%
   add_model(lasso_fit)
 ```
 
@@ -44,15 +101,48 @@ cr_wf<-cr_wf%>%
 Now we can add our recipe to the workflow. 
 
 ```{r}
-cr_wf<-cr_wf%>%
-  add_recipe(cr_rec)
+hs_wf<-hs_wf%>%
+  add_recipe(hs_rec)
 ```
 
 And fit the data
 
 
 ```{r}
-cr_wf<-cr_wf%>%
-  fit(cr_train)
+hs_wf<-hs_wf%>%
+  fit(hs_train)
 ```
+
+
+
+```{r}
+  hs_test<-
+  hs_wf%>%
+  predict(new_data=hs_test)%>%
+  rename(.pred1=.pred)%>%
+  bind_cols(hs_test)
+```
+
+## Calculate RMSE
+
+Next we can use the `rmse` command to compare the actual log sale price in the dataset to the predicted log price. 
+
+```{r}
+hs_test%>%
+  rmse(truth=x3tgpatot,estimate=.pred1)
+```
+
+
+We can also look at the coefficients to get a sense of what got included and what got dropped. 
+```{r}
+hs_wf%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
+  arrange(-abs(estimate))
+```
+
+
+
+
+
 

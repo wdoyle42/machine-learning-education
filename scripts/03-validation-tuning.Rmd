@@ -1,0 +1,217 @@
+---
+title: "Validation and Hyperparameter Tuning"
+author: "Will Doyle"
+date: "2025-01-09"
+output: github_document
+---
+
+## Cross Validation
+
+The essence of prediction is discovering the extent to which our models can predict outcomes for data that does not come from our sample. Many times this process is temporal. We fit a model to data from one time period, then take predictors from a subsequent time period to come up with a prediction in the future. For instance, we might use data on team performance to predict the likely winners and losers for upcoming soccer games. 
+
+This process does not have to be temporal. We can also have data that is out of sample because it hadn't yet been collected when our first data was collected, or we can also have data that is out of sample because we designated it as out of sample.
+
+The data that is used to generate our predictions is known as 
+*training* data. The idea is that this is the data used to train our model, to let it know what the relationship is between our predictors and our outcome. So far, we have worked mostly with training data. 
+
+That data that is used to validate our predictions is known as *testing* data. With testing data, we take our trained model and see how good it is at predicting outcomes using out of sample data. 
+
+One very simple approach to this would be to cut our data in two parts. This is what we've done so far.  We could then train our model on one part of the data, then test it on the other part. This would tell us whether our measure of model fit (e.g. rmse, auc) is similar or different when we apply our model to out of sample data. 
+
+But this would only be a "one-shot" approach. It would be better to do this multiple times, cutting the data into two parts: , then fitting the model to the training data, and then checking its predictions against the validation data set. That way, we could generate a large number of rmse's to see how well the model fits on lots of different possible out-of-sample predictions. 
+
+This process is called *cross validation*, and it involves two important decisions: first, how will the data be cut, and how many times will the validation run. 
+ 
+
+## Monte Carlo Resampling
+
+The code below will generate a resampled dataset using monte carlo resampling. 
+
+
+
+## Load dataset
+```{r}
+hs<-read_csv("hsls_extract.csv")%>%clean_names()
+```
+
+
+
+## Data Cleaning
+```{r}
+hs <- hs %>%
+  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+  drop_na()
+```
+
+```{r}
+hs_split<-initial_split(hs)
+
+hs_train<-training(hs_split)
+
+hs_test<-testing(hs_split)
+```
+
+
+## Recipe
+```{r}
+hs_formula<-as.formula("x3tgpatot~.")
+
+hs_rec<-recipe(hs_formula,data=hs_train)%>%
+  update_role(x3tgpatot,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .01)%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_filter_missing(all_predictors(),threshold = .1)%>%
+  step_naomit(all_outcomes(),all_predictors())%>%
+  step_corr(all_predictors(),threshold = .95)%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+```
+
+
+```{r}
+penalty_spec<-.1
+
+mixture_spec<-1
+
+lasso_fit<- 
+  linear_reg(penalty=penalty_spec,
+             mixture=mixture_spec) %>% 
+  set_engine("glmnet")%>%
+  set_mode("regression")
+```
+
+
+```{r}
+hs_rs<-mc_cv(hs_train,times=25) ## More like 1000 in practice
+```
+
+```{r}
+hs_wf<-workflow()%>%
+  add_model(lasso_fit)%>%
+  add_recipe(hs_rec)
+
+```
+
+
+We can then fit the model to the resampled data via `fit_resamples`.
+```{r}
+hs_lasso_fit<-hs_wf%>%
+  fit_resamples(hs_rs)
+```
+
+The model has now been fit to 25 versions of the training data. Let's look at the metrics using `collect_metrics`.
+```{r}
+hs_lasso_fit%>%collect_metrics()
+```
+
+
+We can also pull certain metrics like rmse one at a time if we want.
+```{r}
+hs_lasso_fit%>%
+  unnest(.metrics)%>%
+  filter(.metric=="rmse")%>%
+  ggplot(aes(x=.estimate))+
+  geom_density()
+```
+
+
+## Model Tuning
+
+The problem with the above is that I arbitrarily set the value of penalty to be .1. Do I know this was correct? No! What we need to do is try out a bunch of different values of the penalty, and see which one gives us the best model fit. This process has the impressive name of "hyperparameter tuning" but it could just as easily be called "trying a bunch of stuff to see what works."
+
+Below I'm going to give the argument `tune()` for the value of penalty. This will allow us to "fill in" values later. 
+
+Of course we don't know what penalty to use in the lasso model, so we can tune it. This is set up
+by using the `penalty=tune()` approach below. 
+
+```{r}
+hs_tune_model<- 
+  linear_reg(penalty=tune(),mixture=mixture_spec)%>% 
+  set_engine("glmnet")
+```
+
+Now that we've said which parameter to tune, we'll use the `grid_regular` command to get a set of nicely spaced out values. This command is specific to the parameter, so it will choose reasonable values for a penalty. 
+
+```{r}
+lasso_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model) ,levels=10)
+```
+
+We can use `update_model` to change our workflow with the new model. 
+```{r}
+hs_wf<-hs_wf%>%
+  update_model(hs_tune_model)
+```
+
+Then we can use `tune_grid` to run the model through the resampled data, using the grid supplied. 
+```{r}
+hs_lasso_tune_fit <- 
+  hs_wf %>%
+    tune_grid(hs_rs,grid=lasso_grid)
+```
+
+## Examine Results
+
+Lets' take a look and see which models fit better. 
+
+```{r}
+hs_lasso_tune_fit%>%
+  collect_metrics()%>%
+  filter(.metric=="rmse")%>%
+  arrange(mean)
+```
+
+
+## Ridge Regression
+
+Ridge regression is another technique for regularization, which helps to solve the multicollinearity problem by adding a degree of bias to the regression estimates. It includes every predictor in the model but shrinks the coefficients of less important predictors towards zero, thus minimizing their impact on the model.
+
+In the tidymodels setup, ridge is specified with alpha (mixture) = 0.
+
+```{r}
+
+hs_tune_model<- 
+  linear_reg(penalty=0,mixture=tune())%>% 
+  set_engine("glmnet")
+```
+
+```{r}
+ridge_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model) ,levels=10)
+```
+
+```{r}
+hs_wf<-hs_wf%>%
+  update_model(hs_tune_model)
+```
+
+```{r}
+hs_ridge_tune_fit <- 
+  hs_wf %>%
+    tune_grid(hs_rs,grid=ridge_grid)
+```
+
+
+
+```{r}
+hs_ridge_tune_fit%>%
+  collect_metrics()%>%
+  filter(.metric=="rmse")%>%
+  arrange(mean)
+```
+
+```{r}
+best_ridge_penalty<-select_best(cr_ridge_tune_fit)
+
+best_ridge_penalty<-best_ridge_penalty$penalty[1]
+
+cr_tune_model<- 
+  linear_reg(penalty=best_ridge_penalty,mixture=mixture_spec)%>% 
+  set_engine("glmnet")
+
+cr_ridge_result<-cr_wf%>%
+  update_model(cr_tune_model)%>%
+  fit(cr_train)
+
+cr_ridge_result%>%extract_fit_parsnip()%>%tidy()
+```
+
+
