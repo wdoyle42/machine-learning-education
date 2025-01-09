@@ -18,6 +18,7 @@ We want to predict total HS GPA from a set of characteristics of incoming ninth 
 We'll use root mean sqaure error (rmse) as our measure of accuracy. 
 
 ## Load libraries
+
 ```{r}
 library(tidyverse)
 library(tidymodels)
