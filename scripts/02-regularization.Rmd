@@ -48,7 +48,7 @@ cr_wf<-cr_wf%>%
   add_recipe(cr_rec)
 ```
 
-Aad fit the data
+And fit the data
 
 
 ```{r}

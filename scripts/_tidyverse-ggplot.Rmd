@@ -1,0 +1,119 @@
+---
+title: "Quick intro to tidyverse/ggplot"
+author: "Will Doyle"
+date: "2025-01-09"
+output: github_document
+---
+
+## Tidyverse/GGPlot
+
+
+## Load libraries
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+```
+
+
+## Load dataset
+```{r}
+hs<-read_csv("hsls_extract.csv")%>%
+  clean_names()
+```
+
+```{r}
+hs <- hs %>%
+  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+  drop_na()
+```
+
+## Basics of Tidyverse
+
+Tidyverse is an approach to programming in R. It's guided by four principles:
+
+1. Reuse existing data structures.
+
+2. Compose simple functions with the pipe.
+
+3. Embrace functional programming.
+
+4. Design for humans.
+
+It even has a manifesto! Check it out: https://tidyverse.tidyverse.org/articles/manifesto.html
+
+Here's an explanation of what's going in the code above, which uses a Tidyverse approach to replacing all negative values with missing, except for the variable `x1tmtscor`
+
+`hs <- hs %>%`
+
+The hs data frame is being updated in place.
+
+The `%>%` operator (pipe) is used to pass the data frame through a series of transformations.
+
+`mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))`
+
+`mutate()`: Used to create or modify columns in the data frame.
+
+`across(-x1txmtscor, ~ ifelse(. < 0, NA, .))`
+
+Applies a transformation to all columns except x1txmtscor:
+
+`-x1txmtscor`: Excludes the column x1txmtscor from the operation.
+`~ ifelse(. < 0, NA, .)` : A lambda function that replaces negative values (. < 0) in the selected columns with NA. The . refers to the current column values.
+
+Result: Negative values in all columns (except x1txmtscor) are replaced with NA.
+
+`drop_na()`
+
+Removes all rows from the data frame that contain NA values in any column.
+
+## Outcome variable
+
+```{r}
+hs%>%
+  summarize(mean(x3tgpatot))
+```
+
+The `summarize` command "collapses" the data, using the operator supplied, in this case `mean`
+
+## GGPlot
+
+```{r}
+hs%>%
+ggplot(aes(x=x3tgpatot))+
+  geom_histogram()
+```
+
+GGPlot stands for grammer of graphics. The basic idea is that a graphic consistes of elements that are mapped onto a geometry via an aesthetic (eg x and y variables mapped onto a scatterplot). A description is here: https://ggplot2.tidyverse.org/
+
+
+## Outcome variable as a function of independent variable
+
+Below, I use a tidyverse approach and then a ggplot approach to show average GPA by levels of parental income. 
+
+
+## Table
+```{r}
+hs%>%
+  group_by(x1par1edu)%>%
+  summarize(`Mean GPA`=mean(x3tgpatot))%>%
+  arrange(`Mean GPA`)%>%
+  rename(`Parental Education`=x1par1edu)
+```
+
+
+## Graphic
+```{r}
+hs%>%
+  group_by(x1par1edu)%>%
+  summarize(`Mean GPA`=mean(x3tgpatot))%>%
+  mutate(`Parental Education`=fct_reorder(x1par1edu,`Mean GPA`))%>%
+  ggplot(aes(x=`Parental Education`,y=`Mean GPA`,fill=`Parental Education`))+
+  geom_col()+
+  coord_flip()+
+  theme_minimal()+
+  theme(legend.position="bottom")
+```
+
+
