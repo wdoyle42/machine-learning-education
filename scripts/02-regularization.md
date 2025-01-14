@@ -1,0 +1,380 @@
+Regularization
+================
+Will Doyle
+2025-01-09
+
+## Lasso model
+
+One of the key decisions for an analyst is which variables to include.
+We can make decisions about this using theory, or our understanding of
+the context, but we can also rely on computational approaches. This is
+known as *regularization* and it involves downweighting the importance
+of coefficients from a model based on the contribution that a predictor
+makes. We’re going to make use of a regularization penalty known as the
+“lasso.” The lasso downweights variables mostly be dropping variables
+that are highly correlated with one another, leaving only one of the
+correlated variables as contributors to the model. We set the degree to
+which this penalty will be implemented by setting the “penalty” variable
+in the model specification. (This is also called the L1 penalty, or L1
+regularization)
+
+The lasso model minimizes the RSS plus the penalty times the
+coefficients, meaning the coefficients have to contribute substantially
+to minimizing RSS or they’ll be quickly downweighted to 0.
+
+$$ 
+\sum_{i=1}^{n} \left( y_i - \beta_0 - \sum_{j=1}^{p} x_{ij} \beta_j \right)^2 + \lambda \sum_{j=1}^{p} |\beta_j| \right)
+$$
+
+## Libraries
+
+``` r
+library(tidyverse)
+```
+
+    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+    ## ✔ dplyr     1.1.4     ✔ readr     2.1.5
+    ## ✔ forcats   1.0.0     ✔ stringr   1.5.1
+    ## ✔ ggplot2   3.5.1     ✔ tibble    3.2.1
+    ## ✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+    ## ✔ purrr     1.0.2     
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+    ## ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+
+``` r
+library(tidymodels)
+```
+
+    ## ── Attaching packages ────────────────────────────────────── tidymodels 1.2.0 ──
+    ## ✔ broom        1.0.6     ✔ rsample      1.2.1
+    ## ✔ dials        1.3.0     ✔ tune         1.2.1
+    ## ✔ infer        1.0.7     ✔ workflows    1.1.4
+    ## ✔ modeldata    1.4.0     ✔ workflowsets 1.1.0
+    ## ✔ parsnip      1.2.1     ✔ yardstick    1.3.1
+    ## ✔ recipes      1.1.0     
+    ## ── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
+    ## ✖ scales::discard() masks purrr::discard()
+    ## ✖ dplyr::filter()   masks stats::filter()
+    ## ✖ recipes::fixed()  masks stringr::fixed()
+    ## ✖ dplyr::lag()      masks stats::lag()
+    ## ✖ yardstick::spec() masks readr::spec()
+    ## ✖ recipes::step()   masks stats::step()
+    ## • Use suppressPackageStartupMessages() to eliminate package startup messages
+
+``` r
+library(janitor)
+```
+
+    ## 
+    ## Attaching package: 'janitor'
+    ## 
+    ## The following objects are masked from 'package:stats':
+    ## 
+    ##     chisq.test, fisher.test
+
+## Numeric example
+
+We’ll start by generating a large dataset with a strong predictor x1,
+and a weaker predictor, x2
+
+``` r
+# Generate standardized dataset
+n <- 1e6  # Number of observations
+x1 <- rnorm(n, mean = 0, sd = 1)
+x2 <- rnorm(n, mean = 0, sd = 1)
+
+b1=4
+b2=.25
+
+y <- (b1 * x1) + (b2 * x2) + rnorm(n, mean = 0, sd = 5)
+
+data <- tibble(x1 = x1, x2 = x2, y = y)
+```
+
+We’ll then split training and testing as always.
+
+``` r
+data_split <- initial_split(data, prop = 0.8)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+```
+
+This data barely needs any preprocessing, so the recipe is simple
+
+``` r
+recipe <- recipe(y ~ x1 + x2, data = train_data)
+```
+
+Our model specification will be a bit different– we’re going to use the
+`tune()` function, which implies that we’ll use different values for the
+penalty (lambda in the textbook, also known as l1 regularization).
+
+``` r
+# Define model specification with tunable penalty
+lasso_spec <- linear_reg(penalty = tune(), mixture = 1) %>%
+  set_engine("glmnet")
+```
+
+Put those together in a workflow.
+
+``` r
+# Define a workflow
+workflow <- workflow() %>%
+  add_recipe(recipe) %>%
+  add_model(lasso_spec)
+```
+
+When we set a tuning value, we’re saying that we’re going to supply a
+set of possible values for that parameter. The code below gives a grid
+with some sensible values using powers of 10 from -3 to 0. Penalty can
+only be from 0-1, this gives us a good lineup.
+
+``` r
+# Grid of penalty values
+penalty_values <- 10^seq(-3, 0, length.out = 10)
+```
+
+The function below uses `map_dfr` to map the penalty values onto the
+function that fits the data and outputs the results as a data frame,
+with the columns `predictions`, `rmse_values` and `coef_values`. The
+resulting data frame is created in the tibble function. The output is
+then the data frame.
+
+``` r
+# Fit models for each penalty value and collect results
+results <- map_dfr(
+  penalty_values,
+  function(penalty_value) {
+    # Fit the model on training data
+    lasso_fit <- linear_reg(penalty = penalty_value, mixture = 1) %>%
+      set_engine("glmnet") %>%
+      fit(y ~ x1 + x2, data = train_data)
+
+    # Get predictions on the testing data
+    predictions <- predict(lasso_fit, test_data) %>%
+      bind_cols(test_data)
+
+    # Calculate RMSE
+    rmse_value <- rmse(predictions, truth = y, estimate = .pred)
+
+    # Add penalty value and coefficients
+    coef_values <- tidy(lasso_fit) %>%
+      filter(term != "(Intercept)") %>%
+      mutate(penalty = penalty_value)
+
+    tibble(
+      penalty = penalty_value,
+      rmse = rmse_value$.estimate,
+      coef_x1 = coef_values$estimate[coef_values$term == "x1"],
+      coef_x2 = coef_values$estimate[coef_values$term == "x2"]
+    )
+  }
+)
+```
+
+    ## 
+    ## Attaching package: 'Matrix'
+
+    ## The following objects are masked from 'package:tidyr':
+    ## 
+    ##     expand, pack, unpack
+
+    ## Loaded glmnet 4.1-8
+
+We can then plot the results.
+
+``` r
+# Visualize RMSE and coefficients as a function of penalty
+results %>%
+  pivot_longer(cols = starts_with("coef"), names_to = "term", values_to = "coefficient") %>%
+  ggplot(aes(x = penalty, y = coefficient, color = term)) +
+  geom_line() +
+  scale_x_log10() + ## So the plot is linear
+  labs(
+    title = "Lasso Regression Coefficients by Penalty",
+    x = "Penalty (Log Scale)",
+    y = "Coefficient Estimate",
+    color = "Predictor"
+  ) +
+  theme_minimal()
+```
+
+![](02-regularization_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+
+``` r
+results %>%
+  ggplot(aes(x = penalty, y = rmse)) +
+  geom_line() +
+  scale_x_log10() + 
+  labs(
+    title = "RMSE by Penalty",
+    x = "Penalty (Log Scale)",
+    y = "RMSE"
+  ) +
+  theme_minimal()
+```
+
+![](02-regularization_files/figure-gfm/unnamed-chunk-9-2.png)<!-- -->
+
+As you can see, as the penalty increases at first the rmse only
+decreases a bit. As it goes higher it begins downweighting even the x1
+predictor too much and the rmse goes much higher.
+
+Let’s take that and apply it to our high school example, using lasso to
+predict GPA.
+
+## Load dataset
+
+``` r
+hs<-read_csv("hsls_extract.csv")%>%clean_names()
+```
+
+    ## Rows: 23503 Columns: 12
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr (9): X1PAR1EDU, X1PAR1EMP, X1HHNUMBER, X1FAMINCOME, X1STUEDEXPCT, X1IEPF...
+    ## dbl (3): X1TXMTSCOR, X1SCHOOLENG, X3TGPATOT
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+## Data Cleaning
+
+``` r
+hs <- hs %>%
+  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+  drop_na()
+```
+
+## Training/Testing
+
+``` r
+hs_split<-initial_split(hs)
+
+hs_train<-training(hs_split)
+
+hs_test<-testing(hs_split)
+```
+
+## Recipe
+
+``` r
+hs_formula<-as.formula("x3tgpatot~.")
+
+hs_rec<-recipe(hs_formula,data=hs_train)%>%
+  update_role(x3tgpatot,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .01)%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_filter_missing(all_predictors(),threshold = .1)%>%
+  step_naomit(all_outcomes(),all_predictors())%>%
+  step_corr(all_predictors(),threshold = .95)%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+```
+
+Now we can update the model to use lasso, which will subset on a smaller
+number of covariates. In the `tidymodels` setup, ridge is alpha
+(mixture)=0, while lasso is alpha (mixture)=1.
+<https://parsnip.tidymodels.org/reference/glmnet-details.htm>
+
+We’ll set a penalty of .1 just to start.
+
+``` r
+penalty_spec<-.1
+
+mixture_spec<-1
+
+lasso_fit<- 
+  linear_reg(penalty=penalty_spec,
+             mixture=mixture_spec) %>% 
+  set_engine("glmnet")%>%
+  set_mode("regression")
+```
+
+## Define the Workflow
+
+``` r
+hs_wf<-workflow()
+```
+
+## Add the Model
+
+``` r
+hs_wf<-hs_wf%>%
+  add_model(lasso_fit)
+```
+
+Now we can add our recipe to the workflow.
+
+``` r
+hs_wf<-hs_wf%>%
+  add_recipe(hs_rec)
+```
+
+And fit the data:
+
+``` r
+hs_wf<-hs_wf%>%
+  fit(hs_train)
+```
+
+Using the same setup as wed did with regression, we’ll ad the
+predictions from the lasso model to the test dataset.
+
+``` r
+  hs_test<-
+  hs_wf%>%
+  predict(new_data=hs_test)%>%
+  rename(.pred1=.pred)%>%
+  bind_cols(hs_test)
+```
+
+## Calculate RMSE
+
+Next we can use the `rmse` command to compare the actual outcome in the
+dataset to the outcome.
+
+``` r
+hs_test%>%
+  rmse(truth=x3tgpatot,estimate=.pred1)
+```
+
+    ## # A tibble: 1 × 3
+    ##   .metric .estimator .estimate
+    ##   <chr>   <chr>          <dbl>
+    ## 1 rmse    standard       0.643
+
+We can also look at the coefficients to get a sense of what got included
+and what got dropped.
+
+``` r
+hs_wf%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
+  arrange(-abs(estimate))
+```
+
+    ## # A tibble: 46 × 3
+    ##    term                                              estimate penalty
+    ##    <chr>                                                <dbl>   <dbl>
+    ##  1 (Intercept)                                        2.93        0.1
+    ##  2 x1txmtscor                                         0.322       0.1
+    ##  3 x1schooleng                                        0.0399      0.1
+    ##  4 x1stuedexpct_High.school.diploma.or.GED           -0.0133      0.1
+    ##  5 x1control_Public                                  -0.00678     0.1
+    ##  6 x1par1edu_Bachelor.s.degree                        0           0.1
+    ##  7 x1par1edu_High.school.diploma.or.GED               0           0.1
+    ##  8 x1par1edu_Less.than.high.school                    0           0.1
+    ##  9 x1par1edu_Master.s.degree                          0           0.1
+    ## 10 x1par1edu_Ph.D.M.D.Law.other.high.lvl.prof.degree  0           0.1
+    ## # ℹ 36 more rows
+
+So, whereas before we had 36 substantive coefficients, now we have four.
+That’s what lasso does, particularly with a high penalty level.
+
+## Quick Exercise
+
+Go back and set the penalty to .01 and rerun the code. What changes in
+terms of coefficient estimates and rmse?

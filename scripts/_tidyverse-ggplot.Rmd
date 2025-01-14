@@ -82,7 +82,7 @@ The `summarize` command "collapses" the data, using the operator supplied, in th
 ```{r}
 hs%>%
 ggplot(aes(x=x3tgpatot))+
-  geom_histogram()
+  geom_hist()
 ```
 
 GGPlot stands for grammer of graphics. The basic idea is that a graphic consistes of elements that are mapped onto a geometry via an aesthetic (eg x and y variables mapped onto a scatterplot). A description is here: https://ggplot2.tidyverse.org/

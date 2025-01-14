@@ -112,7 +112,7 @@ Below I'll use tidymodels to run a regresion predicting overall HS GPA from the 
 
 ## Splitting into training and testing
 
-The code is dividing the `cr` dataset into two parts: a training set (`train`) to teach a machine learning model and a testing set (`test`) to evaluate how well the model has learned. This split ensures that the model is evaluated on data it hasn't seen before, providing a more realistic assessment of its performance.
+The code is dividing the `hs` dataset into two parts: a training set (`train`) to teach a machine learning model and a testing set (`test`) to evaluate how well the model has learned. This split ensures that the model is evaluated on data it hasn't seen before, providing a more realistic assessment of its performance.
 
 ```{r}
 hs_split<-initial_split(hs)
