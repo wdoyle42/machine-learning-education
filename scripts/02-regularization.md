@@ -23,7 +23,7 @@ coefficients, meaning the coefficients have to contribute substantially
 to minimizing RSS or they’ll be quickly downweighted to 0.
 
 $$ 
-\sum_{i=1}^{n} \left( y_i - \beta_0 - \sum_{j=1}^{p} x_{ij} \beta_j \right)^2 + \lambda \sum_{j=1}^{p} |\beta_j| \right)
+=argmin[\sum_{i=1}^{n} (y_i - \beta_0 - \sum_{j=1}^{p} x_{ij} \beta_j)^2 + \lambda \sum_{j=1}^{p} |\beta_j|]
 $$
 
 ## Libraries
@@ -61,7 +61,7 @@ library(tidymodels)
     ## ✖ dplyr::lag()      masks stats::lag()
     ## ✖ yardstick::spec() masks readr::spec()
     ## ✖ recipes::step()   masks stats::step()
-    ## • Use suppressPackageStartupMessages() to eliminate package startup messages
+    ## • Use tidymodels_prefer() to resolve common conflicts.
 
 ``` r
 library(janitor)
@@ -344,7 +344,7 @@ hs_test%>%
     ## # A tibble: 1 × 3
     ##   .metric .estimator .estimate
     ##   <chr>   <chr>          <dbl>
-    ## 1 rmse    standard       0.643
+    ## 1 rmse    standard       0.648
 
 We can also look at the coefficients to get a sense of what got included
 and what got dropped.
@@ -360,10 +360,10 @@ hs_wf%>%
     ##    term                                              estimate penalty
     ##    <chr>                                                <dbl>   <dbl>
     ##  1 (Intercept)                                        2.93        0.1
-    ##  2 x1txmtscor                                         0.322       0.1
-    ##  3 x1schooleng                                        0.0399      0.1
-    ##  4 x1stuedexpct_High.school.diploma.or.GED           -0.0133      0.1
-    ##  5 x1control_Public                                  -0.00678     0.1
+    ##  2 x1txmtscor                                         0.331       0.1
+    ##  3 x1schooleng                                        0.0441      0.1
+    ##  4 x1stuedexpct_High.school.diploma.or.GED           -0.00463     0.1
+    ##  5 x1control_Public                                  -0.00414     0.1
     ##  6 x1par1edu_Bachelor.s.degree                        0           0.1
     ##  7 x1par1edu_High.school.diploma.or.GED               0           0.1
     ##  8 x1par1edu_Less.than.high.school                    0           0.1
