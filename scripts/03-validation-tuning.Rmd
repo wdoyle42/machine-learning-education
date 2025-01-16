@@ -20,20 +20,27 @@ One very simple approach to this would be to cut our data in two parts. This is 
 
 But this would only be a "one-shot" approach. It would be better to do this multiple times, cutting the data into two parts: , then fitting the model to the training data, and then checking its predictions against the validation data set. That way, we could generate a large number of rmse's to see how well the model fits on lots of different possible out-of-sample predictions. 
 
-This process is called *cross validation*, and it involves two important decisions: first, how will the data be cut, and how many times will the validation run. 
+This process is called *cross validation*, and it involves two important decisions: first, how will the data be cut, and second,how many times will the validation run?
  
 
 ## Monte Carlo Resampling
 
-The code below will generate a resampled dataset using monte carlo resampling. 
+Monte Carlo resampling is a method used in the context of cross-validation to evaluate machine learning models. Monte Carlo resampling involves randomly splitting the data multiple times into training and testing sets, ensuring that the evaluation of model fit in the testing dataset isn't unduly affected by a single "draw" of the testing data. 
 
+The code below will generate a resampled dataset using Monte Carlo resampling. 
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+```
 
 
 ## Load dataset
 ```{r}
 hs<-read_csv("hsls_extract.csv")%>%clean_names()
 ```
-
 
 
 ## Data Cleaning
@@ -62,7 +69,6 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_dummy(all_nominal_predictors())%>%
   step_filter_missing(all_predictors(),threshold = .1)%>%
   step_naomit(all_outcomes(),all_predictors())%>%
-  step_corr(all_predictors(),threshold = .95)%>%
   step_zv(all_predictors())%>%
   step_normalize(all_predictors())
 ```
@@ -89,7 +95,6 @@ hs_rs<-mc_cv(hs_train,times=25) ## More like 1000 in practice
 hs_wf<-workflow()%>%
   add_model(lasso_fit)%>%
   add_recipe(hs_rec)
-
 ```
 
 
@@ -160,17 +165,99 @@ hs_lasso_tune_fit%>%
   arrange(mean)
 ```
 
+## Completing the workflow
+
+Once we've identified the hyperparameter that has the lowest mean and SE in the rmse, the next step is to finalize the workflow using that hyperparameter. 
+
+First, we'll pull the best parameters. 
+```{r}
+best_params <- hs_lasso_tune_fit %>%
+  select_best(metric = "rmse") 
+```
+
+Next, we'll finalize the workflow using those parameters.
+```{r}
+final_lasso_workflow <- hs_wf %>%
+  finalize_workflow(best_params)
+```
+
+And then we'll fit the model to the full training dataset.
+```{r}
+
+final_model <- final_lasso_workflow %>%
+  fit(data = hs_train) 
+```
+
+```{r}
+predictions <- final_model %>%
+  predict(new_data = hs_test) %>% 
+  bind_cols(hs_test) 
+```
+
+```{r}
+predictions%>%  
+metrics(truth = x3tgpatot, estimate = .pred)
+```
+
+
+## K-fold Cross Validation
+
+K-fold cross-validation is a widely used method to evaluate and tune machine learning models by splitting the dataset into 
+k equally sized subsets (folds). It systematically rotates the roles of training and testing datasets to provide robust performance estimates.
+
+How It Works.
+First, we partition the data:
+
+The dataset is randomly divided into k equal (or nearly equal) folds.
+Each fold serves as the testing dataset once, while the remaining 
+k−1 folds are combined to form the training dataset.
+Model Training and Evaluation:
+
+For each fold:
+The model is trained on the aggregated k−1 folds (training set).
+The model is tested on the left-out fold (testing set).
+The performance metric (e.g., RMSE, accuracy, is calculated on the testing set.
+This process is repeated k times (once for each fold).
+Aggregating Results:
+
+The evaluation metrics from all k iterations are averaged to produce a single performance estimate.
+This reduces the risk of biased evaluations due to a single train-test split.
+
+To structure the data for k-fold resampling, we use the `vfold_cv` command:
+```{r}
+hs_vf<-vfold_cv(hs_train)
+```
+
+
+```{r}
+hs_lasso_tune_fit <- 
+  hs_wf %>%
+    tune_grid(hs_vf,grid=lasso_grid)
+```
+
+## Examine Results
+
+Lets' take a look and see which models fit better using the k-fold approach. 
+
+```{r}
+hs_lasso_tune_fit%>%
+  collect_metrics()%>%
+  filter(.metric=="rmse")%>%
+  arrange(mean)
+```
+
+
 
 ## Ridge Regression
 
 Ridge regression is another technique for regularization, which helps to solve the multicollinearity problem by adding a degree of bias to the regression estimates. It includes every predictor in the model but shrinks the coefficients of less important predictors towards zero, thus minimizing their impact on the model.
 
-In the tidymodels setup, ridge is specified with alpha (mixture) = 0.
+In the tidymodels setup, ridge is specified with mixture=0 and penalty set to the desired value.A value of mixture = 1 corresponds to a pure lasso model, while mixture = 0 indicates ridge regression. Values of mixture in between will set the balance between the two in the elastic net model, which we'll cover shortly.
 
 ```{r}
-
+mixture_spec=0
 hs_tune_model<- 
-  linear_reg(penalty=0,mixture=tune())%>% 
+  linear_reg(penalty=tune(),mixture=mixture_spec)%>% 
   set_engine("glmnet")
 ```
 
@@ -190,7 +277,6 @@ hs_ridge_tune_fit <-
 ```
 
 
-
 ```{r}
 hs_ridge_tune_fit%>%
   collect_metrics()%>%
@@ -199,19 +285,20 @@ hs_ridge_tune_fit%>%
 ```
 
 ```{r}
-best_ridge_penalty<-select_best(cr_ridge_tune_fit)
+best_ridge_penalty<-select_best(hs_ridge_tune_fit)
 
 best_ridge_penalty<-best_ridge_penalty$penalty[1]
 
-cr_tune_model<- 
+hs_tune_model<- 
   linear_reg(penalty=best_ridge_penalty,mixture=mixture_spec)%>% 
   set_engine("glmnet")
 
-cr_ridge_result<-cr_wf%>%
-  update_model(cr_tune_model)%>%
-  fit(cr_train)
+hs_ridge_result<-hs_wf%>%
+  update_model(hs_tune_model)%>%
+  fit(hs_train)
 
-cr_ridge_result%>%extract_fit_parsnip()%>%tidy()
+hs_ridge_result%>%extract_fit_parsnip()%>%tidy()%>%
+  arrange(-abs(estimate))%>%print(n=50)
 ```
 
 
