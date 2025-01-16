@@ -21,7 +21,6 @@ designated it as out of sample.
 The data that is used to generate our predictions is known as *training*
 data. The idea is that this is the data used to train our model, to let
 it know what the relationship is between our predictors and our outcome.
-So far, we have worked mostly with training data.
 
 That data that is used to validate our predictions is known as *testing*
 data. With testing data, we take our trained model and see how good it
@@ -30,15 +29,15 @@ is at predicting outcomes using out of sample data.
 One very simple approach to this would be to cut our data in two parts.
 This is what we’ve done so far. We could then train our model on one
 part of the data, then test it on the other part. This would tell us
-whether our measure of model fit (e.g. rmse, auc) is similar or
-different when we apply our model to out of sample data.
+whether our measure of model fit (e.g. rmse) is similar or different
+when we apply our model to out of sample data.
 
 But this would only be a “one-shot” approach. It would be better to do
 this multiple times, cutting the data into two parts: , then fitting the
 model to the training data, and then checking its predictions against
 the validation data set. That way, we could generate a large number of
-rmse’s to see how well the model fits on lots of different possible
-out-of-sample predictions.
+measures of accuracy to see how well the model fits on lots of different
+possible out-of-sample predictions.
 
 This process is called *cross validation*, and it involves two important
 decisions: first, how will the data be cut, and second,how many times
@@ -53,8 +52,8 @@ training and testing sets, ensuring that the evaluation of model fit in
 the testing dataset isn’t unduly affected by a single “draw” of the
 testing data.
 
-The code below will generate a resampled dataset using Monte Carlo
-resampling.
+We’ll get everything set up for modeling in the hsls data before
+structuring the data for resampling.
 
 ``` r
 library(tidyverse)
@@ -89,7 +88,7 @@ library(tidymodels)
     ## ✖ dplyr::lag()      masks stats::lag()
     ## ✖ yardstick::spec() masks readr::spec()
     ## ✖ recipes::step()   masks stats::step()
-    ## • Search for functions across packages at https://www.tidymodels.org/find/
+    ## • Use suppressPackageStartupMessages() to eliminate package startup messages
 
 ``` r
 library(janitor)
@@ -160,9 +159,14 @@ lasso_fit<-
   set_mode("regression")
 ```
 
+The code below will generate a resampled dataset using Monte Carlo
+resampling. The default is to split it 75/25, with 25 replications.
+
 ``` r
 hs_rs<-mc_cv(hs_train,times=25) ## More like 1000 in practice
 ```
+
+Set the workflow, as usual.
 
 ``` r
 hs_wf<-workflow()%>%
@@ -187,8 +191,8 @@ hs_lasso_fit%>%collect_metrics()
     ## # A tibble: 2 × 6
     ##   .metric .estimator  mean     n std_err .config             
     ##   <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
-    ## 1 rmse    standard   0.646    25 0.00186 Preprocessor1_Model1
-    ## 2 rsq     standard   0.336    25 0.00235 Preprocessor1_Model1
+    ## 1 rmse    standard   0.648    25 0.00208 Preprocessor1_Model1
+    ## 2 rsq     standard   0.339    25 0.00238 Preprocessor1_Model1
 
 We can also pull certain metrics like rmse one at a time if we want.
 
@@ -252,7 +256,7 @@ hs_lasso_tune_fit <-
     ## → A | warning: A correlation computation is required, but `estimate` is constant and has 0
     ##                standard deviation, resulting in a divide by 0 error. `NA` will be returned.
 
-    ## There were issues with some computations   A: x1There were issues with some computations   A: x2There were issues with some computations   A: x3There were issues with some computations   A: x4There were issues with some computations   A: x6There were issues with some computations   A: x7There were issues with some computations   A: x9There were issues with some computations   A: x10There were issues with some computations   A: x11There were issues with some computations   A: x12There were issues with some computations   A: x14There were issues with some computations   A: x15There were issues with some computations   A: x17There were issues with some computations   A: x18There were issues with some computations   A: x20There were issues with some computations   A: x21There were issues with some computations   A: x23There were issues with some computations   A: x24There were issues with some computations   A: x25
+    ## There were issues with some computations   A: x1There were issues with some computations   A: x2There were issues with some computations   A: x4There were issues with some computations   A: x5There were issues with some computations   A: x6There were issues with some computations   A: x8There were issues with some computations   A: x9There were issues with some computations   A: x11There were issues with some computations   A: x12There were issues with some computations   A: x13There were issues with some computations   A: x14There were issues with some computations   A: x16There were issues with some computations   A: x17There were issues with some computations   A: x19There were issues with some computations   A: x20There were issues with some computations   A: x21There were issues with some computations   A: x22There were issues with some computations   A: x24There were issues with some computations   A: x25There were issues with some computations   A: x25
 
 ## Examine Results
 
@@ -268,16 +272,16 @@ hs_lasso_tune_fit%>%
     ## # A tibble: 10 × 7
     ##          penalty .metric .estimator  mean     n std_err .config              
     ##            <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>                
-    ##  1 0.000464      rmse    standard   0.604    25 0.00133 Preprocessor1_Model07
-    ##  2 0.0000000001  rmse    standard   0.604    25 0.00133 Preprocessor1_Model01
-    ##  3 0.00000000129 rmse    standard   0.604    25 0.00133 Preprocessor1_Model02
-    ##  4 0.0000000167  rmse    standard   0.604    25 0.00133 Preprocessor1_Model03
-    ##  5 0.000000215   rmse    standard   0.604    25 0.00133 Preprocessor1_Model04
-    ##  6 0.00000278    rmse    standard   0.604    25 0.00133 Preprocessor1_Model05
-    ##  7 0.0000359     rmse    standard   0.604    25 0.00133 Preprocessor1_Model06
-    ##  8 0.00599       rmse    standard   0.604    25 0.00135 Preprocessor1_Model08
-    ##  9 0.0774        rmse    standard   0.635    25 0.00175 Preprocessor1_Model09
-    ## 10 1             rmse    standard   0.780    25 0.00212 Preprocessor1_Model10
+    ##  1 0.000464      rmse    standard   0.607    25 0.00201 Preprocessor1_Model07
+    ##  2 0.0000000001  rmse    standard   0.607    25 0.00201 Preprocessor1_Model01
+    ##  3 0.00000000129 rmse    standard   0.607    25 0.00201 Preprocessor1_Model02
+    ##  4 0.0000000167  rmse    standard   0.607    25 0.00201 Preprocessor1_Model03
+    ##  5 0.000000215   rmse    standard   0.607    25 0.00201 Preprocessor1_Model04
+    ##  6 0.00000278    rmse    standard   0.607    25 0.00201 Preprocessor1_Model05
+    ##  7 0.0000359     rmse    standard   0.607    25 0.00201 Preprocessor1_Model06
+    ##  8 0.00599       rmse    standard   0.607    25 0.00201 Preprocessor1_Model08
+    ##  9 0.0774        rmse    standard   0.637    25 0.00207 Preprocessor1_Model09
+    ## 10 1             rmse    standard   0.784    25 0.00207 Preprocessor1_Model10
 
 ## Completing the workflow
 
@@ -320,9 +324,11 @@ metrics(truth = x3tgpatot, estimate = .pred)
     ## # A tibble: 3 × 3
     ##   .metric .estimator .estimate
     ##   <chr>   <chr>          <dbl>
-    ## 1 rmse    standard       0.604
-    ## 2 rsq     standard       0.384
-    ## 3 mae     standard       0.473
+    ## 1 rmse    standard       0.600
+    ## 2 rsq     standard       0.377
+    ## 3 mae     standard       0.472
+
+This represents a completed workflow– the parameters
 
 ## K-fold Cross Validation
 
@@ -364,7 +370,7 @@ hs_lasso_tune_fit <-
     ## → A | warning: A correlation computation is required, but `estimate` is constant and has 0
     ##                standard deviation, resulting in a divide by 0 error. `NA` will be returned.
 
-    ## There were issues with some computations   A: x1There were issues with some computations   A: x3There were issues with some computations   A: x4There were issues with some computations   A: x5There were issues with some computations   A: x7There were issues with some computations   A: x8There were issues with some computations   A: x9There were issues with some computations   A: x10
+    ## There were issues with some computations   A: x1There were issues with some computations   A: x3There were issues with some computations   A: x4There were issues with some computations   A: x6There were issues with some computations   A: x7There were issues with some computations   A: x9There were issues with some computations   A: x10
 
 ## Examine Results
 
@@ -381,16 +387,16 @@ hs_lasso_tune_fit%>%
     ## # A tibble: 10 × 7
     ##          penalty .metric .estimator  mean     n std_err .config              
     ##            <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>                
-    ##  1 0.000464      rmse    standard   0.606    10 0.00674 Preprocessor1_Model07
-    ##  2 0.0000000001  rmse    standard   0.606    10 0.00674 Preprocessor1_Model01
-    ##  3 0.00000000129 rmse    standard   0.606    10 0.00674 Preprocessor1_Model02
-    ##  4 0.0000000167  rmse    standard   0.606    10 0.00674 Preprocessor1_Model03
-    ##  5 0.000000215   rmse    standard   0.606    10 0.00674 Preprocessor1_Model04
-    ##  6 0.00000278    rmse    standard   0.606    10 0.00674 Preprocessor1_Model05
-    ##  7 0.0000359     rmse    standard   0.606    10 0.00674 Preprocessor1_Model06
-    ##  8 0.00599       rmse    standard   0.607    10 0.00683 Preprocessor1_Model08
-    ##  9 0.0774        rmse    standard   0.638    10 0.00793 Preprocessor1_Model09
-    ## 10 1             rmse    standard   0.781    10 0.00878 Preprocessor1_Model10
+    ##  1 0.000464      rmse    standard   0.608    10 0.00520 Preprocessor1_Model07
+    ##  2 0.0000000001  rmse    standard   0.608    10 0.00520 Preprocessor1_Model01
+    ##  3 0.00000000129 rmse    standard   0.608    10 0.00520 Preprocessor1_Model02
+    ##  4 0.0000000167  rmse    standard   0.608    10 0.00520 Preprocessor1_Model03
+    ##  5 0.000000215   rmse    standard   0.608    10 0.00520 Preprocessor1_Model04
+    ##  6 0.00000278    rmse    standard   0.608    10 0.00520 Preprocessor1_Model05
+    ##  7 0.0000359     rmse    standard   0.608    10 0.00520 Preprocessor1_Model06
+    ##  8 0.00599       rmse    standard   0.608    10 0.00517 Preprocessor1_Model08
+    ##  9 0.0774        rmse    standard   0.638    10 0.00589 Preprocessor1_Model09
+    ## 10 1             rmse    standard   0.784    10 0.00730 Preprocessor1_Model10
 
 ## Ridge Regression
 
@@ -438,16 +444,16 @@ hs_ridge_tune_fit%>%
     ## # A tibble: 10 × 7
     ##          penalty .metric .estimator  mean     n std_err .config              
     ##            <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>                
-    ##  1 0.0000000001  rmse    standard   0.604    25 0.00136 Preprocessor1_Model01
-    ##  2 0.00000000129 rmse    standard   0.604    25 0.00136 Preprocessor1_Model02
-    ##  3 0.0000000167  rmse    standard   0.604    25 0.00136 Preprocessor1_Model03
-    ##  4 0.000000215   rmse    standard   0.604    25 0.00136 Preprocessor1_Model04
-    ##  5 0.00000278    rmse    standard   0.604    25 0.00136 Preprocessor1_Model05
-    ##  6 0.0000359     rmse    standard   0.604    25 0.00136 Preprocessor1_Model06
-    ##  7 0.000464      rmse    standard   0.604    25 0.00136 Preprocessor1_Model07
-    ##  8 0.00599       rmse    standard   0.604    25 0.00136 Preprocessor1_Model08
-    ##  9 0.0774        rmse    standard   0.604    25 0.00139 Preprocessor1_Model09
-    ## 10 1             rmse    standard   0.640    25 0.00173 Preprocessor1_Model10
+    ##  1 0.0000000001  rmse    standard   0.607    25 0.00200 Preprocessor1_Model01
+    ##  2 0.00000000129 rmse    standard   0.607    25 0.00200 Preprocessor1_Model02
+    ##  3 0.0000000167  rmse    standard   0.607    25 0.00200 Preprocessor1_Model03
+    ##  4 0.000000215   rmse    standard   0.607    25 0.00200 Preprocessor1_Model04
+    ##  5 0.00000278    rmse    standard   0.607    25 0.00200 Preprocessor1_Model05
+    ##  6 0.0000359     rmse    standard   0.607    25 0.00200 Preprocessor1_Model06
+    ##  7 0.000464      rmse    standard   0.607    25 0.00200 Preprocessor1_Model07
+    ##  8 0.00599       rmse    standard   0.607    25 0.00200 Preprocessor1_Model08
+    ##  9 0.0774        rmse    standard   0.608    25 0.00200 Preprocessor1_Model09
+    ## 10 1             rmse    standard   0.643    25 0.00210 Preprocessor1_Model10
 
 ``` r
 best_ridge_penalty<-select_best(hs_ridge_tune_fit)
@@ -471,55 +477,56 @@ hs_ridge_result%>%extract_fit_parsnip()%>%tidy()%>%
   arrange(-abs(estimate))%>%print(n=50)
 ```
 
-    ## # A tibble: 49 × 3
+    ## # A tibble: 50 × 3
     ##    term                                                     estimate     penalty
     ##    <chr>                                                       <dbl>       <dbl>
-    ##  1 (Intercept)                                              2.94           1e-10
-    ##  2 x1txmtscor                                               0.324          1e-10
+    ##  1 (Intercept)                                              2.93           1e-10
+    ##  2 x1txmtscor                                               0.323          1e-10
     ##  3 x1schooleng                                              0.113          1e-10
-    ##  4 x1stuedexpct_High.school.diploma.or.GED                 -0.0713         1e-10
-    ##  5 x1control_Public                                        -0.0657         1e-10
-    ##  6 x1famincome_Family.income....15.000.and.....35.000      -0.0553         1e-10
-    ##  7 x1famincome_Family.income.less.than.or.equal.to..15.000 -0.0534         1e-10
-    ##  8 x1locale_Rural                                           0.0413         1e-10
-    ##  9 x1hhnumber_X4.Household.members                          0.0345         1e-10
-    ## 10 x1par1edu_Bachelor.s.degree                              0.0343         1e-10
-    ## 11 x1region_South                                          -0.0326         1e-10
-    ## 12 x1locale_Town                                            0.0322         1e-10
-    ## 13 x1stuedexpct_Complete.a.Master.s.degree                  0.0298         1e-10
-    ## 14 x1stuedexpct_other                                      -0.0276         1e-10
-    ## 15 x1stuedexpct_Complete.an.Associate.s.degree             -0.0259         1e-10
-    ## 16 x1region_Northeast                                      -0.0249         1e-10
-    ## 17 x1par1edu_Master.s.degree                                0.0242         1e-10
-    ## 18 x1stuedexpct_Don.t.know                                 -0.0239         1e-10
-    ## 19 x1hhnumber_X5.Household.members                          0.0236         1e-10
-    ## 20 x1hhnumber_X8.Household.members                          0.0234         1e-10
-    ## 21 x1par1edu_Less.than.high.school                         -0.0213         1e-10
-    ## 22 x1famincome_Family.income....35.000.and.....55.000      -0.0191         1e-10
-    ## 23 x1famincome_Unit.non.response                           -0.0178         1e-10
-    ## 24 x1stuedexpct_Complete.Ph.D.M.D.Law.other.prof.degree     0.0178         1e-10
-    ## 25 x1par1emp_P1.not.currently.working.for.pay              -0.0170         1e-10
-    ## 26 x1par1emp_Unit.non.response                             -0.0170         1e-10
-    ## 27 x1par1edu_Unit.non.response                             -0.0167         1e-10
-    ## 28 x1par1edu_High.school.diploma.or.GED                    -0.0153         1e-10
-    ## 29 x1hhnumber_X6.Household.members                          0.0152         1e-10
-    ## 30 x1hhnumber_Unit.non.response                            -0.0148         1e-10
-    ## 31 x1par1emp_P1.currently.working.PT...35.hrs.wk.           0.0148         1e-10
-    ## 32 x1iepflag_Student.has.no.IEP                             0.0144         1e-10
-    ## 33 x1hhnumber_X7.Household.members                          0.0122         1e-10
-    ## 34 x1region_West                                           -0.0109         1e-10
-    ## 35 x1par1edu_Ph.D.M.D.Law.other.high.lvl.prof.degree        0.0101         1e-10
-    ## 36 x1famincome_Family.income....195.000.and.....215.000     0.00988        1e-10
-    ## 37 x1famincome_Family.income....95.000.and.....115.000      0.00901        1e-10
-    ## 38 x1iepflag_Student.has.an.IEP                             0.00829        1e-10
-    ## 39 x1par1emp_P1.has.never.worked.for.pay                   -0.00812        1e-10
-    ## 40 x1hhnumber_X3.Household.members                          0.00738        1e-10
-    ## 41 x1hhnumber_other                                        -0.00665        1e-10
-    ## 42 x1famincome_Family.income....55.000.and.....75.000       0.00652        1e-10
-    ## 43 x1famincome_Family.income....75.000.and.....95.000       0.00652        1e-10
-    ## 44 x1famincome_Family.income....155.000.and....175.000      0.00564        1e-10
-    ## 45 x1famincome_Family.income....135.000.and.....155.000     0.00414        1e-10
-    ## 46 x1famincome_Family.income....235.000                     0.00395        1e-10
-    ## 47 x1locale_Suburb                                         -0.00314        1e-10
-    ## 48 x1famincome_Family.income....175.000.and.....195.000     0.00252        1e-10
-    ## 49 x1famincome_other                                       -0.000920       1e-10
+    ##  4 x1stuedexpct_High.school.diploma.or.GED                 -0.0763         1e-10
+    ##  5 x1control_Public                                        -0.0650         1e-10
+    ##  6 x1famincome_Family.income....15.000.and.....35.000      -0.0496         1e-10
+    ##  7 x1famincome_Family.income.less.than.or.equal.to..15.000 -0.0479         1e-10
+    ##  8 x1locale_Rural                                           0.0465         1e-10
+    ##  9 x1region_South                                          -0.0376         1e-10
+    ## 10 x1hhnumber_X4.Household.members                          0.0353         1e-10
+    ## 11 x1par1edu_Bachelor.s.degree                              0.0341         1e-10
+    ## 12 x1stuedexpct_Complete.a.Master.s.degree                  0.0301         1e-10
+    ## 13 x1stuedexpct_Complete.an.Associate.s.degree             -0.0280         1e-10
+    ## 14 x1locale_Town                                            0.0279         1e-10
+    ## 15 x1par1edu_Master.s.degree                                0.0272         1e-10
+    ## 16 x1region_Northeast                                      -0.0265         1e-10
+    ## 17 x1famincome_Family.income....35.000.and.....55.000      -0.0248         1e-10
+    ## 18 x1stuedexpct_Don.t.know                                 -0.0228         1e-10
+    ## 19 x1par1edu_Less.than.high.school                         -0.0219         1e-10
+    ## 20 x1stuedexpct_other                                      -0.0198         1e-10
+    ## 21 x1stuedexpct_Complete.Ph.D.M.D.Law.other.prof.degree     0.0184         1e-10
+    ## 22 x1iepflag_Student.has.no.IEP                             0.0180         1e-10
+    ## 23 x1par1emp_P1.currently.working.PT...35.hrs.wk.           0.0179         1e-10
+    ## 24 x1hhnumber_X5.Household.members                          0.0173         1e-10
+    ## 25 x1famincome_Unit.non.response                           -0.0173         1e-10
+    ## 26 x1hhnumber_X6.Household.members                          0.0166         1e-10
+    ## 27 x1par1emp_Unit.non.response                             -0.0162         1e-10
+    ## 28 x1par1edu_Unit.non.response                             -0.0161         1e-10
+    ## 29 x1hhnumber_X8.Household.members                          0.0158         1e-10
+    ## 30 x1region_West                                           -0.0157         1e-10
+    ## 31 x1hhnumber_Unit.non.response                            -0.0139         1e-10
+    ## 32 x1par1emp_P1.not.currently.working.for.pay              -0.0127         1e-10
+    ## 33 x1par1edu_Ph.D.M.D.Law.other.high.lvl.prof.degree        0.0127         1e-10
+    ## 34 x1hhnumber_X3.Household.members                          0.0125         1e-10
+    ## 35 x1par1edu_High.school.diploma.or.GED                    -0.0123         1e-10
+    ## 36 x1famincome_Family.income....195.000.and.....215.000     0.0114         1e-10
+    ## 37 x1hhnumber_X7.Household.members                          0.0110         1e-10
+    ## 38 x1hhnumber_other                                        -0.0110         1e-10
+    ## 39 x1famincome_Family.income....95.000.and.....115.000      0.0104         1e-10
+    ## 40 x1famincome_Family.income....75.000.and.....95.000       0.00787        1e-10
+    ## 41 x1iepflag_Student.has.an.IEP                            -0.00738        1e-10
+    ## 42 x1stuedexpct_Start.a.Master.s.degree                    -0.00647        1e-10
+    ## 43 x1famincome_Family.income....55.000.and.....75.000       0.00449        1e-10
+    ## 44 x1famincome_Family.income....235.000                     0.00424        1e-10
+    ## 45 x1locale_Suburb                                         -0.00386        1e-10
+    ## 46 x1famincome_Family.income....135.000.and.....155.000     0.00306        1e-10
+    ## 47 x1par1emp_P1.has.never.worked.for.pay                   -0.00125        1e-10
+    ## 48 x1famincome_Family.income....175.000.and.....195.000     0.000985       1e-10
+    ## 49 x1famincome_Family.income....155.000.and....175.000      0.000707       1e-10
+    ## 50 x1famincome_other                                       -0.000633       1e-10

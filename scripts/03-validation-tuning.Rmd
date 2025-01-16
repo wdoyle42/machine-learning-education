@@ -12,23 +12,21 @@ The essence of prediction is discovering the extent to which our models can pred
 This process does not have to be temporal. We can also have data that is out of sample because it hadn't yet been collected when our first data was collected, or we can also have data that is out of sample because we designated it as out of sample.
 
 The data that is used to generate our predictions is known as 
-*training* data. The idea is that this is the data used to train our model, to let it know what the relationship is between our predictors and our outcome. So far, we have worked mostly with training data. 
+*training* data. The idea is that this is the data used to train our model, to let it know what the relationship is between our predictors and our outcome. 
 
 That data that is used to validate our predictions is known as *testing* data. With testing data, we take our trained model and see how good it is at predicting outcomes using out of sample data. 
 
-One very simple approach to this would be to cut our data in two parts. This is what we've done so far.  We could then train our model on one part of the data, then test it on the other part. This would tell us whether our measure of model fit (e.g. rmse, auc) is similar or different when we apply our model to out of sample data. 
+One very simple approach to this would be to cut our data in two parts. This is what we've done so far.  We could then train our model on one part of the data, then test it on the other part. This would tell us whether our measure of model fit (e.g. rmse) is similar or different when we apply our model to out of sample data. 
 
-But this would only be a "one-shot" approach. It would be better to do this multiple times, cutting the data into two parts: , then fitting the model to the training data, and then checking its predictions against the validation data set. That way, we could generate a large number of rmse's to see how well the model fits on lots of different possible out-of-sample predictions. 
+But this would only be a "one-shot" approach. It would be better to do this multiple times, cutting the data into two parts: , then fitting the model to the training data, and then checking its predictions against the validation data set. That way, we could generate a large number of measures of accuracy to see how well the model fits on lots of different possible out-of-sample predictions. 
 
 This process is called *cross validation*, and it involves two important decisions: first, how will the data be cut, and second,how many times will the validation run?
  
-
 ## Monte Carlo Resampling
 
 Monte Carlo resampling is a method used in the context of cross-validation to evaluate machine learning models. Monte Carlo resampling involves randomly splitting the data multiple times into training and testing sets, ensuring that the evaluation of model fit in the testing dataset isn't unduly affected by a single "draw" of the testing data. 
 
-The code below will generate a resampled dataset using Monte Carlo resampling. 
-
+We'll get everything set up for modeling in the hsls data before structuring the data for resampling. 
 
 ```{r}
 library(tidyverse)
@@ -87,10 +85,14 @@ lasso_fit<-
 ```
 
 
+The code below will generate a resampled dataset using Monte Carlo resampling. The default is to split it 75/25, with 25 replications.
+
 ```{r}
 hs_rs<-mc_cv(hs_train,times=25) ## More like 1000 in practice
 ```
 
+
+Set the workflow, as usual. 
 ```{r}
 hs_wf<-workflow()%>%
   add_model(lasso_fit)%>%
@@ -183,7 +185,6 @@ final_lasso_workflow <- hs_wf %>%
 
 And then we'll fit the model to the full training dataset.
 ```{r}
-
 final_model <- final_lasso_workflow %>%
   fit(data = hs_train) 
 ```
@@ -199,6 +200,7 @@ predictions%>%
 metrics(truth = x3tgpatot, estimate = .pred)
 ```
 
+This represents a completed workflow-- the parameters 
 
 ## K-fold Cross Validation
 
