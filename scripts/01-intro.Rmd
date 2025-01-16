@@ -2,7 +2,7 @@
 title: "Introduction to Tidyverse/Tidymodels"
 author: "Will Doyle"
 date: "2025-01-07"
-output: github_document
+output: pdf_document
 ---
 
 ## Datset

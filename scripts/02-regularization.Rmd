@@ -2,7 +2,7 @@
 title: "Regularization"
 author: "Will Doyle"
 date: "2025-01-09"
-output: github_document
+output: pdf_document
 ---
 
 
@@ -199,14 +199,12 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_normalize(all_predictors())
 ```
 
-
-
 Now we can update the model to use lasso, which will subset on a smaller number of covariates. In the `tidymodels` setup, ridge is alpha (mixture)=0, while lasso is alpha (mixture)=1.   https://parsnip.tidymodels.org/reference/glmnet-details.htm
 
 We'll set a penalty of .1 just to start. 
 
 ```{r}
-penalty_spec<-.1
+penalty_spec<-.05
 
 mixture_spec<-1
 
@@ -272,7 +270,7 @@ We can also look at the coefficients to get a sense of what got included and wha
 hs_wf%>%
   extract_fit_parsnip()%>%
   tidy()%>%
-  arrange(-abs(estimate))
+  arrange(-abs(estimate))%>%print(n=50)
 ```
 
 So, whereas before we had 36 substantive coefficients, now we have four. That's what lasso does, particularly with a high penalty level. 
@@ -280,6 +278,11 @@ So, whereas before we had 36 substantive coefficients, now we have four. That's 
 ## Quick Exercise ##
 
 Go back and set the penalty to .01 and rerun the code. What changes in terms of coefficient estimates and rmse?
+
+## Quick Exercise 2
+
+Our first kaggle challenge! Minimize the rmse using L1 regularization and/or feature engineering. 
+
 
 
 
