@@ -88,7 +88,7 @@ lasso_fit<-
 The code below will generate a resampled dataset using Monte Carlo resampling. The default is to split it 75/25, with 25 replications.
 
 ```{r}
-hs_rs<-mc_cv(hs_train,times=25) ## More like 1000 in practice
+hs_rs<-mc_cv(hs_train,times=25,prop=.75) ## More like 1000 in practice
 ```
 
 
@@ -200,7 +200,7 @@ predictions%>%
 metrics(truth = x3tgpatot, estimate = .pred)
 ```
 
-This represents a completed workflow-- the parameters 
+This represents a completed workflow-- the parameters are set, and the model is deployable.  
 
 ## K-fold Cross Validation
 
@@ -227,7 +227,7 @@ This reduces the risk of biased evaluations due to a single train-test split.
 
 To structure the data for k-fold resampling, we use the `vfold_cv` command:
 ```{r}
-hs_vf<-vfold_cv(hs_train)
+hs_vf<-vfold_cv(hs_train,v = 20)
 ```
 
 
@@ -249,12 +249,13 @@ hs_lasso_tune_fit%>%
 ```
 
 
-
 ## Ridge Regression
 
 Ridge regression is another technique for regularization, which helps to solve the multicollinearity problem by adding a degree of bias to the regression estimates. It includes every predictor in the model but shrinks the coefficients of less important predictors towards zero, thus minimizing their impact on the model.
 
 In the tidymodels setup, ridge is specified with mixture=0 and penalty set to the desired value.A value of mixture = 1 corresponds to a pure lasso model, while mixture = 0 indicates ridge regression. Values of mixture in between will set the balance between the two in the elastic net model, which we'll cover shortly.
+
+The code below runs through what should be a familiar set of steps to tune a ridge regression. 
 
 ```{r}
 mixture_spec=0

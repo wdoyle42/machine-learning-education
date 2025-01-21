@@ -1,0 +1,175 @@
+---
+title: "Validation and Hyperparameter Tuning"
+author: "Will Doyle"
+date: "2025-01-09"
+output: github_document
+---
+
+## Elastic Net
+
+The elastic net model combines the lasso and the ridge using the mixture parameter.
+
+### Elastic Net: Mathematical Formulation
+
+Elastic Net combines **L1 regularization** (Lasso) and **L2 regularization** (Ridge) into a single model. The objective function minimizes:
+
+$$
+\text{Minimize: } \underbrace{\frac{1}{2n} \sum_{i=1}^n (y_i - \hat{y}_i)^2}_{\text{OLS loss}} + \lambda \left( \underbrace{\frac{1-\alpha}{2} \sum_{j=1}^p \beta_j^2}_{\text{L2 penalty}} + \underbrace{\alpha \sum_{j=1}^p |\beta_j|}_{\text{L1 penalty}} \right)
+$$
+
+-   $\lambda$ (penalty): Controls the **overall strength** of regularization. Larger $\lambda$ shrinks coefficients more aggressively.
+-   $\alpha$ (mixture): Determines the **blend** between L1 and L2 penalties:
+    -   $\alpha = 0$: Pure Ridge (L2 penalty only)
+    -   $\alpha = 1$: Pure Lasso (L1 penalty only)
+    -   $0 < \alpha < 1$: Elastic Net (mix of both penalties).
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+```
+
+## Load dataset
+
+```{r}
+hs<-read_csv("hsls_extract.csv")%>%clean_names()
+```
+
+## Data Cleaning
+
+```{r}
+hs <- hs %>%
+  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+  drop_na()
+```
+
+```{r}
+hs_split<-initial_split(hs)
+
+hs_train<-training(hs_split)
+
+hs_test<-testing(hs_split)
+```
+
+## Recipe
+
+```{r}
+hs_formula<-as.formula("x3tgpatot~.")
+
+hs_rec<-recipe(hs_formula,data=hs_train)%>%
+  update_role(x3tgpatot,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .01)%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+```
+
+In tidymodels, elastic net is set using two paramters. Penalty sets $\lambda$ while mixture sets $\alpha$ in the above notation. Below, we'll just set these as two values that need to be tuned.
+
+```{r}
+hs_tune_model<- 
+  linear_reg(penalty=tune(),mixture=tune())%>% 
+  set_engine("glmnet")
+```
+
+We can use tidymodels defaults to set values for penalty and mixture. Note how penalty goes on a log scale, while mixture just goes through the steps from 0 to 1 in a sensible manner.
+
+```{r}
+enet_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model) ,levels=10)
+```
+
+```{r}
+hs_rs<-mc_cv(hs_train,times=25,prop=.75) ## More like 1000 in practice
+```
+
+Set the workflow, as usual.
+
+```{r}
+hs_wf<-workflow()%>%
+  add_model(hs_tune_model)%>%
+  add_recipe(hs_rec)
+```
+
+Then we can use `tune_grid` to run the model through the resampled data, using the grid supplied.
+
+```{r}
+hs_enet_tune_fit <- 
+  hs_wf %>%
+    tune_grid(hs_rs,grid=enet_grid)
+```
+
+Let's take a look at the results to see which combination of penalty and mixture seemed to work best.
+
+```{r}
+hs_enet_tune_fit%>%collect_metrics()%>% filter(.metric=="rmse")%>%arrange(mean)
+```
+
+We can also plot the results.
+
+```{r}
+hs_enet_tune_fit%>%
+collect_metrics()%>%
+  mutate(mixture=as_factor(round(mixture,2)))%>%
+  filter(.metric=="rmse")%>%
+  rename_with(~str_to_title(.))%>%
+  rename(RMSE=Mean)%>%
+  ggplot(aes(y=RMSE,x=Penalty,color=Mixture))+
+  geom_line()+
+  facet_wrap(~Mixture,nrow=2)+
+  theme_minimal()
+```
+
+## Selecting best parameters
+
+Our workflow will be much the same as last time once we've identified the best parameters. The `select_best` will pull the values from the tuning process with best mean rmse.
+
+```{r}
+best_params<-select_best(hs_enet_tune_fit)
+```
+
+## Finalizing the workflow
+
+We can then take those best parameters and plug them in as the values to be used in fitting to the full training data.
+
+```{r}
+final_enet_workflow <- hs_wf %>%
+  finalize_workflow(best_params)
+```
+
+## Fitting to the full training data
+
+And finally we can fit the model to get the values for the coefficients.
+
+```{r}
+final_model <- final_enet_workflow %>%
+  fit(data = hs_train)
+```
+
+## Variable importance
+
+Below we can take a look at the coefficient estimates from the model fitted on the full training dataset.
+
+```{r}
+final_model%>%extract_fit_parsnip()%>%tidy()%>%arrange(-estimate)
+```
+
+## Check against testing data
+
+We're now ready for the final check against the testing data.
+
+```{r}
+predictions <- final_model %>%
+  predict(new_data = hs_test) %>% 
+  bind_cols(hs_test) 
+```
+
+```{r}
+predictions%>%  
+metrics(truth = x3tgpatot, estimate = .pred)
+```
+
+## Last thoughts
+
+While we teach ridge and lasso separately, there's really no reason not to use elastic net and just sort out the appropriate balance of the two by tuning the mixture. 
+
+Make sure you're clear on the difference between the structural parameter estimates we're used to thinking about in psychometrics of econometrics and the variable importance we're using here. It comes down to predictive thinking versus measurement/evaluation thinking.

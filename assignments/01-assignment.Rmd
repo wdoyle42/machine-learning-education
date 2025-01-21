@@ -48,7 +48,7 @@ This assignment will assess your ability to:
 
 
 ### Submission Instructions:
-- Include all code, outputs, and visualizations in an organized RMarkdown or similar document.
+- Include all code in an organized RMarkdown or similar document.
 - Provide brief interpretations for each step, focusing on how the results contribute to understanding `x5postern`.
 
 
