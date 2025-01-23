@@ -1,0 +1,56 @@
+---
+title: "01-Project-Check In"
+output: github_document
+---
+
+### Final Project Check-In 1: Identifying Your Topic, Outcome, and Dataset
+
+**Purpose**:  
+The purpose of this first check-in is to lay the foundation for your final project by selecting a topic area, defining an outcome to predict, and identifying the dataset you will use. This initial step ensures that you have a clear direction and are working with appropriate data to build a deployable machine learning model.
+
+---
+
+#### **Assignment Instructions**
+For this check-in, you will:
+1. **Choose a General Topic Area**  
+   Identify the general area of interest for your project. This can be broad, such as:
+   - Education (e.g., student performance, reading comprehension)
+   - Health (e.g., patient readmissions, disease diagnosis)
+   - Economics (e.g., income prediction, unemployment trends)
+   - Environment (e.g., energy consumption, air quality)
+   - Any other domain that is meaningful to you.
+
+2. **Define an Outcome Variable**  
+   Select the specific outcome you aim to predict. Examples include:
+   - Second-grade reading comprehension scores (continuous variable)
+   - Postsecondary credits earned one year after enrollment (continuous variable)
+   - Image recognition ()
+   - The likelihood of a student being reclassified from english learner status (binary categorical variable)
+
+   Provide a brief explanation of why this outcome is meaningful and relevant to your chosen topic area.
+
+3. **Identify a Dataset**  
+   Find a real-world dataset that you will use for your project. The dataset should be:
+   - Publicly available or accessible to you.
+   - Contain sufficient data to build a predictive model.
+   - Include features (independent variables) that you believe are relevant for predicting your outcome variable.
+
+   For this section, provide:
+   - The name of the dataset.
+   - A brief description of the dataset, including its size (e.g., number of rows and columns), data sources, and any relevant context.
+   - A link or reference to where the dataset can be accessed.
+
+---
+
+#### **Submission Requirements**
+Your submission should include the following:
+1. **General Topic Area**: One to two sentences describing the broad domain of your project.
+2. **Outcome Variable**: One paragraph describing your chosen outcome, why it matters, and how it aligns with your topic area.
+3. **Dataset**:
+   - Name and description of the dataset.
+   - Source of the dataset (e.g., URL or organization).
+   - Brief explanation of why you believe this dataset is appropriate for your project.
+
+
+
+If you have questions or need help selecting a topic or dataset, feel free to reach out during office hours or via email. 
