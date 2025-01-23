@@ -1,0 +1,256 @@
+---
+title: "Elastic Net with Binary Outcomes"
+author: "Will Doyle"
+date: "2025-01-23"
+output: github_document
+---
+
+## Binary Outcomes and Regularization
+ 
+Regularization can you be used in a wide variety of applications, including for
+binary outcomes. We'll make sure to specify that we're using a model
+for classification instead of a model for regression, and then use a loss function
+appropriate for a binary outcome-- the area under the receiver/operator curve, or AUC.
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+```
+
+## Load dataset
+
+```{r}
+hs<-read_csv("hsls_extract3.csv")%>%
+  clean_names()%>%
+  mutate(across(everything(), ~ ifelse(.  %in%c(-9:-4) , NA, .)))%>%
+  mutate(attend4yr=ifelse(str_detect(x5ps1sec,"4-year"),"attend 4yr","other"))%>%
+  select(-x5ps1sec)%>%
+  drop_na()
+
+```
+
+
+```{r}
+hs_split<-initial_split(hs)
+
+hs_train<-training(hs_split)
+
+hs_test<-testing(hs_split)
+```
+
+
+## Understanding Baseline Rate
+
+```{r}
+hs_train%>%
+ group_by(attend4yr) %>%
+  summarize(proportion = n() / nrow(hs_train)) %>%
+  ungroup()
+```
+
+# Checking the baseline rate against other factors
+```{r}
+ hs_train %>%
+  group_by(x1famincome) %>%
+  summarize(
+    total = n(),  # Total number in each income group
+    attending_4yr = sum(attend4yr == "attend 4yr", na.rm = TRUE),
+    proportion_4yr = attending_4yr / total
+  ) %>%
+  ungroup()%>%
+  arrange(-proportion_4yr)
+```
+
+```{r}
+ hs_train %>%
+  group_by(x1famincome) %>%
+  summarize(
+    total = n(),  # Total number in each income group
+    attending_4yr = sum(attend4yr == "attend 4yr", na.rm = TRUE),
+    `P(Four-Year)` = attending_4yr / total
+  ) %>%
+  ungroup()%>%
+  mutate(x1famincome=fct_reorder(x1famincome,`P(Four-Year)`))%>%
+  rename(`Family Income Level`=x1famincome)%>%
+  ggplot(aes(x=`Family Income Level`,y=`P(Four-Year)`,fill=`Family Income Level`))+
+  geom_col()+
+  coord_flip()+
+  theme_minimal()+
+  theme(legend.position="none")
+```
+
+
+## Recipe
+
+```{r}
+attend_formula<-as.formula("attend4yr~.")
+
+hs_rec<-recipe(attend_formula,data=hs_train)%>%
+  update_role(attend4yr,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .01)%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+```
+
+```{r}
+hs_tune_model<- 
+  logistic_reg(penalty=tune(),mixture=tune())%>% 
+  set_engine("glmnet")
+```
+
+```{r}
+enet_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model) ,levels=5)
+```
+
+
+```{r}
+hs_rs<-mc_cv(hs_train,times=25)
+```
+
+
+```{r}
+hs_wf<-workflow()%>%
+  add_model(hs_tune_model)%>%
+  add_recipe(hs_rec)
+```
+
+```{r}
+hs_metrics<-metric_set(sens,spec,accuracy,roc_auc)
+```
+
+
+```{r}
+hs_tune_fit<-hs_wf%>%
+  tune_grid(hs_rs,
+            grid=enet_grid,
+            metrics=hs_metrics)
+```
+
+
+## Accuracy, Sensitivity, Specificity, and AUC
+
+```{r}
+hs_tune_fit%>% collect_metrics()
+```
+
+
+### Threshold for prediction
+
+Logistic regression doesn't output classes. Instead it outputs the probability of a case being in each class. Since the outcome is binary, we can just use the probability of being in the "positive" outcome, or attended college. To turn the result into a classification, we need to set a threshold above which we will decide that the case will be classified as a positive outcome. By default, this is always set to .5, but there's nothing that says that we need to stick with that assumption. More on this later. 
+
+### Accuracy
+
+Accuracy is just the percent of cases correctly predicted. For this measure to be
+realistically evaluated, it must be compared with the baseline rate. 
+
+```{r}
+autoplot(hs_tune_fit,metric="accuracy")
+```
+
+
+### Sensitivity
+
+Sensitivity is the probability that a positive outcome is correctly predicted. For our example, this means accurately predicting that someone goes to college. Of course, this can quite easily be achieved by simply predicting all 1s.
+
+```{r}
+autoplot(hs_tune_fit,metric="sens")
+```
+
+
+### Specificity
+
+Specificity is the probability that a negative outcome is correctly predicted. For our example, this means accurately predicting that someone does NOT go to college (outcome "other"). Sensitivity can be maximized by simply predicting. 
+
+### What's a "good" model?
+
+This can depend on context. For rare outcomes, accuracy may be enough. In some situations, a model with high sensitivity or specificity may be more desirable. For most cases, we'd like a model where sensitivity and specificity remain high regardless of threshold used. 
+
+### The ROC AUC
+
+The receiver/operator characteristic area under the curve (ROC AUC) combines sensitivity and specificity at every possible value of the threshold. AUC goes from .5 (random prediction) to 1 (perfect, sensitivity and specificity are both 1 at every value of the threshold). We tend to think of AUC in terms of academic grades-- below .7 is not so good, .7 to .8 is OK, .8 to .9 is pretty good, and above .9 is very good model performance. As with every other prediction problem this is very context-dependent, but that gives you a good start. 
+
+
+```{r}
+autoplot(hs_tune_fit,metric="roc_auc")
+```
+
+
+## Fitting the model
+
+Let's finalize our workflow and then think about the sensitivity, specificity and auc of the model when predictions are made in the testing dataset. 
+
+The process for this outcome works just the same as for a continuous outcome, we just need to make sure we're using the appropriate metric. 
+
+First we pull the best parameters from the cross-validation. 
+```{r}
+best_params<-select_best(hs_tune_fit,metric="roc_auc")
+```
+
+Then we plug those parameters into the workflow. 
+```{r}
+hs_final<-finalize_workflow(hs_wf,best_params)
+```
+
+Then we fit the best fit model to the full training data. 
+```{r}
+hs_final_fit<-hs_final%>%fit(hs_train)
+```
+
+Finally, we can make predictions in the testing dataset. I'm using `augment` here, which automates the steps we were previously doing by hand, of adding predictions to the testing data. Note that there are actually three different predictions added, the predicted class, the probability of attendance, and the probability of another outcome. 
+
+```{r}
+hs_preds<-augment(hs_final_fit,hs_test)%>%
+  mutate(across(.cols=c(attend4yr,`.pred_class`),~as_factor(.)))
+```
+
+```{r}
+accuracy(hs_preds,truth=attend4yr,estimate=.pred_class)
+
+sensitivity(hs_preds,truth=attend4yr,estimate=.pred_class)
+
+specificity(hs_preds,truth=attend4yr,estimate=.pred_class)
+
+```
+
+
+Now let's see how sensitivity and specificity vary as a function of different thresholds-- this is what's meant by a receiver/operator characteristic curve. 
+
+```{r}
+
+threshold_results <- hs_preds %>%
+  mutate(attend4yr=as_factor(attend4yr))%>%
+  roc_curve(
+    truth = attend4yr,
+    `.pred_attend 4yr`
+  )
+
+```
+
+This shows how the sensitivity and specificity vary as a function of different thresholds. At very low values of the threshold, we're likely to get the most predicted positive outcomes, and therefore high sensitivity. At very high values of the threshold, we're likely to get more predicted negative outcomes, and therefore high specificity. The area under the curve defined by sensitivity on the y axis and 1-specificity on the x axis is the auc. 
+
+The graphs below plot sensitivity and specificity as a function of the threshold used (in reverse order) then shows the auc. 
+
+```{r}
+
+library(patchwork)
+
+p1<-threshold_results%>%
+  pivot_longer(-.threshold,names_to="type")%>%
+  mutate(type=fct_relevel(type,"specificity","sensitivity"))%>%
+  ggplot(aes(x=.threshold,y=value,color=type))+
+  geom_line()+
+  scale_x_reverse()+
+  theme_minimal()
+  
+  
+p2<-autoplot(threshold_results)
+
+p1+p2
+```
+
+The bottom line is for most binary classification tasks we're going to be using AUC, but don't forget about accuracy, sensitivity and specificity, particularly when evaluating the model itself. 
+
+
