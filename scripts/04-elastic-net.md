@@ -60,7 +60,7 @@ library(tidymodels)
     ## ✖ dplyr::lag()      masks stats::lag()
     ## ✖ yardstick::spec() masks readr::spec()
     ## ✖ recipes::step()   masks stats::step()
-    ## • Search for functions across packages at https://www.tidymodels.org/find/
+    ## • Learn how to get started at https://www.tidymodels.org/start/
 
 ``` r
 library(janitor)
@@ -169,18 +169,18 @@ hs_enet_tune_fit%>%collect_metrics()%>% filter(.metric=="rmse")%>%arrange(mean)
 ```
 
     ## # A tibble: 100 × 8
-    ##         penalty mixture .metric .estimator  mean     n std_err .config          
-    ##           <dbl>   <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>            
-    ##  1 0.00599        0.156 rmse    standard   0.607    25 0.00215 Preprocessor1_Mo…
-    ##  2 0.00599        0.261 rmse    standard   0.607    25 0.00215 Preprocessor1_Mo…
-    ##  3 0.00599        0.367 rmse    standard   0.607    25 0.00216 Preprocessor1_Mo…
-    ##  4 0.00599        0.05  rmse    standard   0.607    25 0.00216 Preprocessor1_Mo…
-    ##  5 0.000464       1     rmse    standard   0.607    25 0.00216 Preprocessor1_Mo…
-    ##  6 0.000464       0.894 rmse    standard   0.607    25 0.00216 Preprocessor1_Mo…
-    ##  7 0.00599        0.472 rmse    standard   0.607    25 0.00216 Preprocessor1_Mo…
-    ##  8 0.000464       0.789 rmse    standard   0.607    25 0.00216 Preprocessor1_Mo…
-    ##  9 0.000464       0.683 rmse    standard   0.607    25 0.00216 Preprocessor1_Mo…
-    ## 10 0.0000000001   1     rmse    standard   0.607    25 0.00216 Preprocessor1_Mo…
+    ##          penalty mixture .metric .estimator  mean     n std_err .config         
+    ##            <dbl>   <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>           
+    ##  1 0.00599         0.156 rmse    standard   0.607    25 0.00184 Preprocessor1_M…
+    ##  2 0.00599         0.05  rmse    standard   0.607    25 0.00183 Preprocessor1_M…
+    ##  3 0.000464        1     rmse    standard   0.607    25 0.00183 Preprocessor1_M…
+    ##  4 0.000464        0.894 rmse    standard   0.607    25 0.00183 Preprocessor1_M…
+    ##  5 0.000464        0.789 rmse    standard   0.607    25 0.00183 Preprocessor1_M…
+    ##  6 0.00599         0.261 rmse    standard   0.607    25 0.00185 Preprocessor1_M…
+    ##  7 0.000464        0.683 rmse    standard   0.607    25 0.00183 Preprocessor1_M…
+    ##  8 0.000464        0.578 rmse    standard   0.607    25 0.00183 Preprocessor1_M…
+    ##  9 0.0000000001    0.472 rmse    standard   0.607    25 0.00183 Preprocessor1_M…
+    ## 10 0.00000000129   0.472 rmse    standard   0.607    25 0.00183 Preprocessor1_M…
     ## # ℹ 90 more rows
 
 We can also plot the results.
@@ -241,20 +241,20 @@ fitted on the full training dataset.
 final_model%>%extract_fit_parsnip()%>%tidy()%>%arrange(-estimate)
 ```
 
-    ## # A tibble: 50 × 3
+    ## # A tibble: 51 × 3
     ##    term                            estimate penalty
     ##    <chr>                              <dbl>   <dbl>
     ##  1 (Intercept)                       2.94   0.00599
-    ##  2 x1txmtscor                        0.331  0.00599
-    ##  3 x1schooleng                       0.119  0.00599
-    ##  4 x1hhnumber_X4.Household.members   0.0481 0.00599
-    ##  5 x1locale_Rural                    0.0465 0.00599
-    ##  6 x1par1edu_Bachelor.s.degree       0.0344 0.00599
-    ##  7 x1locale_Town                     0.0304 0.00599
-    ##  8 x1hhnumber_X5.Household.members   0.0284 0.00599
-    ##  9 x1hhnumber_X6.Household.members   0.0251 0.00599
-    ## 10 x1par1edu_Master.s.degree         0.0246 0.00599
-    ## # ℹ 40 more rows
+    ##  2 x1txmtscor                        0.340  0.00599
+    ##  3 x1schooleng                       0.118  0.00599
+    ##  4 x1locale_Rural                    0.0566 0.00599
+    ##  5 x1hhnumber_X4.Household.members   0.0475 0.00599
+    ##  6 x1par1edu_Bachelor.s.degree       0.0373 0.00599
+    ##  7 x1locale_Town                     0.0322 0.00599
+    ##  8 x1hhnumber_X6.Household.members   0.0295 0.00599
+    ##  9 x1hhnumber_X5.Household.members   0.0289 0.00599
+    ## 10 x1par1edu_Master.s.degree         0.0271 0.00599
+    ## # ℹ 41 more rows
 
 ## Check against testing data
 
@@ -274,9 +274,9 @@ metrics(truth = x3tgpatot, estimate = .pred)
     ## # A tibble: 3 × 3
     ##   .metric .estimator .estimate
     ##   <chr>   <chr>          <dbl>
-    ## 1 rmse    standard       0.597
-    ## 2 rsq     standard       0.421
-    ## 3 mae     standard       0.469
+    ## 1 rmse    standard       0.607
+    ## 2 rsq     standard       0.407
+    ## 3 mae     standard       0.475
 
 ## Last thoughts
 

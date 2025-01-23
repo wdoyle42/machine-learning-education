@@ -2,7 +2,7 @@
 title: "Validation and Hyperparameter Tuning"
 author: "Will Doyle"
 date: "2025-01-09"
-output: github_document
+output: word_document
 ---
 
 ## Elastic Net
@@ -170,6 +170,6 @@ metrics(truth = x3tgpatot, estimate = .pred)
 
 ## Last thoughts
 
-While we teach ridge and lasso separately, there's really no reason not to use elastic net and just sort out the appropriate balance of the two by tuning the mixture. 
+While we teach ridge and lasso separately, there's really no reason not to use elastic net and just sort out the appropriate balance of the two by tuning the mixture.
 
 Make sure you're clear on the difference between the structural parameter estimates we're used to thinking about in psychometrics of econometrics and the variable importance we're using here. It comes down to predictive thinking versus measurement/evaluation thinking.

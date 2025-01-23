@@ -2,7 +2,9 @@
 title: "Validation and Hyperparameter Tuning"
 author: "Will Doyle"
 date: "2025-01-09"
-output: github_document
+output:
+  word_document: default
+  pdf_document: default
 ---
 
 ## Cross Validation
