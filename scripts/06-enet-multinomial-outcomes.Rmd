@@ -124,6 +124,8 @@ hs_tune_fit<-hs_wf%>%
 
 ## Accuracy, Sensitivity, Specificity, and AUC
 
+Grabbing the metrics is easy, as usual. 
+
 ```{r}
 hs_tune_fit%>% collect_metrics()
 ```
@@ -133,7 +135,7 @@ hs_tune_fit%>% collect_metrics()
 
 When we discussed the ROC AUC last time, our motivating example was exclusively about binary outcomes. 
 The process for calculating AUC for a multinomial outcome follows the same basic logic, but it's a bit more complicated. We use the Hand/Till method, which involves calculating the AUC for each pairwise comparison across all of the 
-available comparisons 
+available comparisons and then averaging the results. 
 
 
 
@@ -165,6 +167,10 @@ hs_final_fit<-hs_final%>%fit(hs_train)
 
 
 ### Variable importance
+
+Glmnet reports coefficients for all of the classes,
+which is different than many other ways of reporting results, the comparison is always to the null model of intercept only. 
+
 ```{r}
 hs_final_fit%>%
   extract_fit_parsnip()%>%
@@ -172,15 +178,8 @@ hs_final_fit%>%
   filter(term=="(Intercept)")%>%
   group_by(class)%>%
   summarize(mean(estimate))
-  filter(class=="2-year, public")%>%
-  print(n=40)
-    group_by(class)%>%
-  summarize(
-  count()
-
-  filter(class=="2-year,p")
-  arrange(-estimate)
 ```
+
 
 
 ```{r}
@@ -192,19 +191,17 @@ hs_preds<-augment(hs_final_fit,hs_test)%>%
 hs_preds%>%accuracy(estimate = `.pred_class`,truth=sector)
 ```
 
-Explain roc_auc in multinomial setting
 
 ```{r}
 hs_preds%>%
-  select(-`.pred_class`)%>%
-  roc_auc(contains(".pred_"),truth=sector)
-```
-
-```{r}
+ group_by(.pred_class) %>%
+ rename(Sector=.pred_class)%>%
+ summarize(proportion_pred = n() / nrow(hs_preds)) %>%
+  full_join(
 hs_preds%>%
- group_by(sector) %>%
- mutate(proportion = n() / nrow(hs_train)) %>%
- ungroup()
+  group_by(sector)%>%
+  rename(Sector=sector)%>%
+  summarize(proportion_actual=n()/nrow(hs_preds)))
 ```
 
 
