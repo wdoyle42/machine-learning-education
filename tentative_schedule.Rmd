@@ -1,0 +1,28 @@
+---
+title: "Tentative Class Schedule"
+author: "Will Doyle"
+date: "2025-01-27"
+output: github_document
+---
+January 28, 2025 Elastic net for multinomial outcomes
+January 30, 2025 Further adventures in feature engineering
+February 4, 2025 Cross-Validation approachs: simulated annealing, Bayesian optimization
+February 6, 2025 Intro to tree-based models
+February 11, 2025 Random Forests part 1
+February 13, 2025 Random forsts part 2
+February 18, 2025 Random forests (XGboost) 
+February 20, 2025 Random Forests: deployment
+February 25, 2025 SVM part 1: introduction
+February 27, 2025 SVM  part 2: the kernel trick
+March 4, 2025  SVM part 3: Tuning hyperparameters
+March 6, 2025  SVM 4: Deploying
+March 18, 2025 Neural nets: architecture, pt. 1
+March 20, 2025 Neural nets: architecture, pt. 2
+March 25, 2025 Neural nets: backpropagation
+March 27, 2025  Neural nets: hyperparameters
+April 1, 2025  Neural nets: tuning
+April 3, 2025 Neural nets: Further application and tweaking
+April 8, 2025 Neural nets: deep learning 
+April 10, 2025 Neural nets: deploying
+April 15, 2025 Intro to nlp and cnn
+April 17, 2025 NLP, continued/class wrap-up

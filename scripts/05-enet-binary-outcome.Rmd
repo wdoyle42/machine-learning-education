@@ -26,6 +26,8 @@ hs<-read_csv("hsls_extract3.csv")%>%
   clean_names()%>%
   mutate(across(everything(), ~ ifelse(.  %in%c(-9:-4) , NA, .)))%>%
   mutate(attend4yr=ifelse(str_detect(x5ps1sec,"4-year"),"attend 4yr","other"))%>%
+  mutate(attend4yr=as_factor(attend4yr))%>%
+  mutate(attend4yr=fct_relevel(attend4yr))%>%
   select(-x5ps1sec)%>%
   drop_na()
 
@@ -164,6 +166,12 @@ autoplot(hs_tune_fit,metric="sens")
 
 Specificity is the probability that a negative outcome is correctly predicted. For our example, this means accurately predicting that someone does NOT go to college (outcome "other"). Sensitivity can be maximized by simply predicting. 
 
+```{r}
+autoplot(hs_tune_fit,metric="spec")
+```
+
+
+
 ### What's a "good" model?
 
 This can depend on context. For rare outcomes, accuracy may be enough. In some situations, a model with high sensitivity or specificity may be more desirable. For most cases, we'd like a model where sensitivity and specificity remain high regardless of threshold used. 
@@ -199,11 +207,24 @@ Then we fit the best fit model to the full training data.
 hs_final_fit<-hs_final%>%fit(hs_train)
 ```
 
+
+### Variable importance
+```{r}
+hs_final_fit%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
+  arrange(-estimate)
+```
+
+
 Finally, we can make predictions in the testing dataset. I'm using `augment` here, which automates the steps we were previously doing by hand, of adding predictions to the testing data. Note that there are actually three different predictions added, the predicted class, the probability of attendance, and the probability of another outcome. 
 
 ```{r}
 hs_preds<-augment(hs_final_fit,hs_test)%>%
-  mutate(across(.cols=c(attend4yr,`.pred_class`),~as_factor(.)))
+  mutate(across(.cols=c(attend4yr,`.pred_class`),~as_factor(.)))%>%
+  mutate(attend4yr=fct_relevel(attend4yr, "attend 4yr","other"))%>%
+  mutate(`.pred_class`=fct_relevel(`.pred_class`, "attend 4yr","other"))
+  
 ```
 
 ```{r}
@@ -249,6 +270,10 @@ p1<-threshold_results%>%
 p2<-autoplot(threshold_results)
 
 p1+p2
+```
+
+```{r}
+roc_auc(hs_preds,truth=attend4yr,`.pred_attend 4yr`)
 ```
 
 The bottom line is for most binary classification tasks we're going to be using AUC, but don't forget about accuracy, sensitivity and specificity, particularly when evaluating the model itself. 
