@@ -6,10 +6,10 @@ output: github_document
 ---
 January 28, 2025 Elastic net for multinomial outcomes
 January 30, 2025 Further adventures in feature engineering
-February 4, 2025 Cross-Validation approachs: simulated annealing, Bayesian optimization
+February 4, 2025 Cross-Validation approaches: simulated annealing, Bayesian optimization
 February 6, 2025 Intro to tree-based models
 February 11, 2025 Random Forests part 1
-February 13, 2025 Random forsts part 2
+February 13, 2025 Random Forests part 2
 February 18, 2025 Random forests (XGboost) 
 February 20, 2025 Random Forests: deployment
 February 25, 2025 SVM part 1: introduction

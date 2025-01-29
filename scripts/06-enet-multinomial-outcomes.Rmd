@@ -172,24 +172,45 @@ Glmnet reports coefficients for all of the classes,
 which is different than many other ways of reporting results, the comparison is always to the null model of intercept only. 
 
 ```{r}
+
 hs_final_fit%>%
   extract_fit_parsnip()%>%
   tidy()%>%
-  filter(term=="(Intercept)")%>%
   group_by(class)%>%
-  summarize(mean(estimate))
-```
+  filter(term=="(Intercept)")
 
+
+hs_final_fit%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
+  filter(class=="2-year, public")%>%
+  arrange(-abs(estimate))
+  
+
+
+hs_final_fit%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
+  filter(class=="4-year, private")%>%
+  arrange(-abs(estimate))
+
+ 
+```
 
 
 ```{r}
 hs_preds<-augment(hs_final_fit,hs_test)%>%
   mutate(`.pred_class`=as_factor(`.pred_class`))
+
+hs_preds%>%
+  select(1:6)%>%
+  View()
 ```
 
 ```{r}
 hs_preds%>%accuracy(estimate = `.pred_class`,truth=sector)
 ```
+
 
 
 ```{r}
@@ -202,6 +223,11 @@ hs_preds%>%
   group_by(sector)%>%
   rename(Sector=sector)%>%
   summarize(proportion_actual=n()/nrow(hs_preds)))
+```
+
+
+```{r}
+hs_preds%>%select(-`.pred_class`)%>%roc_auc(contains("pred"), truth=sector)
 ```
 
 
