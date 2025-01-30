@@ -71,6 +71,9 @@ hs_train%>%
  group_by(sector) %>%
   summarize(proportion = n() / nrow(hs_train)) %>%
   ungroup()
+
+
+
 ```
 
 
@@ -227,7 +230,80 @@ hs_preds%>%
 
 
 ```{r}
+hs_preds%>%
+  group_by(.pred_class)%>%
+  accuracy(estimate=.pred_class,truth=sector)
+```
+
+
+```{r}
 hs_preds%>%select(-`.pred_class`)%>%roc_auc(contains("pred"), truth=sector)
 ```
+
+### Digression: Multinomial logit and types of constraints
+
+
+
+```{r}
+zero_constraint_mnl<-multinom_reg()%>%
+  set_engine("nnet")
+
+sum_to_zero_constraint_mnl<-multinom_reg(penalty=0,mixture=0)%>%
+  set_engine("glmnet")%>%
+  set_mode("classification")
+```
+
+```{r}
+
+get_mode <- function(x) {
+  # Frequency table of the values
+  freq_table <- table(x)
+  # Extract the name with the highest frequency
+  # (If there's a tie, which.max takes the first occurrence)
+  names(freq_table)[which.max(freq_table)]
+}
+
+means<-
+  hs_train%>%
+  summarize(across(where(is.numeric), 
+                   ~ mean(.x, na.rm = TRUE)),
+            across(where(is.character),
+                         ~get_mode(.x)))
+```
+
+
+```{r}
+wf<-workflow()%>%
+  add_model(zero_constraint_mnl)%>%
+  add_recipe(hs_rec)%>%
+  fit(hs_train)
+
+result_zero_constraint<-
+  wf%>%extract_fit_parsnip()
+
+result_zero_constraint
+
+preds1<-wf%>%augment(means)%>%select(1:6)
+
+```
+
+
+```{r}
+wf<-workflow()%>%
+  add_model(sum_to_zero_constraint_mnl)%>%
+  add_recipe(hs_rec)%>%
+  fit(hs_train)
+
+result<-wf%>%extract_fit_parsnip()%>%tidy()
+
+preds2<-wf%>%augment(means)%>%select(1:6)
+
+preds1%>%
+  rbind(preds2)%>%
+  mutate(total=rowSums(across(-.pred_class)))%>%
+  View()
+```
+https://stats.stackexchange.com/questions/423054/how-to-interpret-coefficients-of-a-multinomial-elastic-net-glmnet-regression
+
 
 
