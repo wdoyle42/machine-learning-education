@@ -3,13 +3,15 @@ title: "Assignment 3"
 author: "Will Doyle"
 date: "2025-01-31"
 output: github_document
+editor_options: 
+  markdown: 
+    wrap: sentence
 ---
 
 ## Assignment 3: Predicting Four-Year vs. Two-Year College Attendance Using Logistic Regression with Elastic Net Regularization
 
-In this assignment, you will analyze a dataset to model the probability of attending a four-year institution versus a two-year institution as a function of parental education. You will use logistic regression with elastic net regularization, perform Monte Carlo cross-validation for hyperparameter tuning, and evaluate model performance using accuracy, sensitivity, specificity, and ROC AUC.
-
-Instructions
+In this assignment, you will analyze a dataset to model the probability of attending a four-year institution versus a two-year institution as a function of parental education.
+You will use logistic regression with elastic net regularization, perform Monte Carlo cross-validation for hyperparameter tuning, and evaluate model performance using accuracy, sensitivity, specificity, and ROC AUC.
 
 ### 1. Data Preparation
 
@@ -22,31 +24,31 @@ Create a binary outcome variable with two levels:
 
 Drop missing values where necessary.
 
-2. Exploratory Data Analysis
+### 2. Exploratory Data Analysis
 
 Create a visualization showing the probability of attending a four-year institution as a function of parental education.
 
-3. Model Building Using Logistic Regression with Elastic Net Regularization
+### 3. Model Building Using Logistic Regression with Elastic Net Regularization
 
 Define the logistic regression model with elastic net regularization.
 
 Preprocess the data using a recipe-based workflow, ensuring:
 
-- All categorical predictors are converted to dummy variables.
-- Features are normalized where necessary.
-- Near-zero variance features are removed.
+-   All categorical predictors are converted to dummy variables.
+-   Features are normalized where necessary.
+-   Near-zero variance features are removed.
 
-4. Model Tuning via Monte Carlo Cross-Validation
+### 4. Model Tuning via Monte Carlo Cross-Validation
 
 Perform Monte Carlo cross-validation (e.g., 25 repetitions).
 Tune both penalty (λ) and mixture (α) parameters to optimize the model.
-Select the best hyperparameters based on ROC AUC.
-Visualize how accuracy, sensitivity, specificity, and AUC vary across regularization values.
+Select the best hyperparameters based on ROC AUC. Visualize how accuracy, sensitivity, specificity, and AUC vary across regularization values.
 
-5. Final Model Fitting
+### 5. Final Model Fitting
+
 Fit the final logistic regression model using the best hyperparameters on the full training dataset.
 
-6. Model Evaluation on the Testing Dataset
+### 6. Model Evaluation on the Testing Dataset
 
 Generate predictions on the test set.
 Report the following metrics:

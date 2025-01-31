@@ -1,0 +1,37 @@
+---
+title: "Adventures in Feature Engineering"
+author: "Will Doyle"
+date: "2025-01-30"
+output: html_document
+---
+
+## Feature Engineering
+
+Today we'll be reviewing the kind of amazing set of functions available for feature engineering in tidymodels. We'll focus on a few subsets:
+
+- Transformations
+- Categorical/binary variables
+- Imputation
+- Interactions and Expansions
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+```
+
+
+## Transformations
+
+
+Transformations refer to any kind of numeric transformation. The key here is linear versus non-linear transforms. Linear transforms just aid in interpretability or ensure identical scales for regularizations. Non-linear transforms are a modeling choice-- they make a fundamental change in how the model works. 
+
+
+```{r}
+hs<-read_csv("hsls_extract.csv")%>%clean_names()
+```
+
+```{r}
+
+```
+
