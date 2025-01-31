@@ -1,0 +1,59 @@
+---
+title: "Assignment 3"
+author: "Will Doyle"
+date: "2025-01-31"
+output: github_document
+---
+
+## Assignment 3: Predicting Four-Year vs. Two-Year College Attendance Using Logistic Regression with Elastic Net Regularization
+
+In this assignment, you will analyze a dataset to model the probability of attending a four-year institution versus a two-year institution as a function of parental education. You will use logistic regression with elastic net regularization, perform Monte Carlo cross-validation for hyperparameter tuning, and evaluate model performance using accuracy, sensitivity, specificity, and ROC AUC.
+
+Instructions
+
+### 1. Data Preparation
+
+Load the dataset and clean the data as necessary.
+
+Create a binary outcome variable with two levels:
+
+"Attend 4-Year" for students attending a four-year institution.
+"Attend 2-Year" for students attending a two-year institution or other postsecondary pathways.
+
+Drop missing values where necessary.
+
+2. Exploratory Data Analysis
+
+Create a visualization showing the probability of attending a four-year institution as a function of parental education.
+
+3. Model Building Using Logistic Regression with Elastic Net Regularization
+
+Define the logistic regression model with elastic net regularization.
+
+Preprocess the data using a recipe-based workflow, ensuring:
+
+- All categorical predictors are converted to dummy variables.
+- Features are normalized where necessary.
+- Near-zero variance features are removed.
+
+4. Model Tuning via Monte Carlo Cross-Validation
+
+Perform Monte Carlo cross-validation (e.g., 25 repetitions).
+Tune both penalty (λ) and mixture (α) parameters to optimize the model.
+Select the best hyperparameters based on ROC AUC.
+Visualize how accuracy, sensitivity, specificity, and AUC vary across regularization values.
+
+5. Final Model Fitting
+Fit the final logistic regression model using the best hyperparameters on the full training dataset.
+
+6. Model Evaluation on the Testing Dataset
+
+Generate predictions on the test set.
+Report the following metrics:
+
+Accuracy – The proportion of correct classifications.
+Sensitivity – The proportion of actual four-year attendees correctly classified.
+Specificity – The proportion of actual two-year attendees correctly classified.
+ROC AUC – A measure of overall classification performance.
+
+For each metric, provide a one- or two-sentence interpretation of what it means in the context of predicting four-year college attendance.
