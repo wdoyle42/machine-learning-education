@@ -123,6 +123,7 @@ final_model <- final_enet_workflow %>%
 
 ```{r}
 predictions <- final_model %>% augment(hs_test)
+
 predictions%>%rmse(truth=x3tgpatot,estimate=.pred)
 ```
 
@@ -139,7 +140,6 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_zv(all_predictors())%>%
   step_normalize(all_predictors())
 ```
-
 
 ### Categorical and binary variables
 
@@ -216,7 +216,7 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_dummy(all_nominal_predictors())%>%
   step_impute_knn(all_predictors())%>%
   step_zv(all_predictors())%>%
-  step_interact(terms=~x1tmtscore:starts_with("x1paredu"))
+  step_interact(terms=~x1tmtscore:starts_with("x1paredu"))%>%
   step_normalize(all_predictors())
 ```
 

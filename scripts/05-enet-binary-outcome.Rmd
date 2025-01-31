@@ -2,7 +2,7 @@
 title: "Elastic Net with Binary Outcomes"
 author: "Will Doyle"
 date: "2025-01-23"
-output: github_document
+output: pdf_document
 ---
 
 ## Binary Outcomes and Regularization
@@ -12,7 +12,7 @@ binary outcomes. We'll make sure to specify that we're using a model
 for classification instead of a model for regression, and then use a loss function
 appropriate for a binary outcome-- the area under the receiver/operator curve, or AUC.
 
-
+e
 ```{r}
 library(tidyverse)
 library(tidymodels)

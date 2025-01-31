@@ -242,13 +242,11 @@ hs_preds%>%select(-`.pred_class`)%>%roc_auc(contains("pred"), truth=sector)
 
 ### Digression: Multinomial logit and types of constraints
 
-
-
 ```{r}
 zero_constraint_mnl<-multinom_reg()%>%
   set_engine("nnet")
 
-sum_to_zero_constraint_mnl<-multinom_reg(penalty=0,mixture=0)%>%
+sum_to_zero_constraint_mnl<-multinom_reg(penalty=0,mixture=1)%>%
   set_engine("glmnet")%>%
   set_mode("classification")
 ```
