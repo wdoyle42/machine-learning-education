@@ -1,0 +1,3651 @@
+Approaches to Hyperparameter Tuning
+================
+Will Doyle
+2025-02-04
+
+``` r
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+Today we’ll cover two approaches to hyperparameter tuning: simulated
+annealing and Bayesian optimization. Both of these are similar in that
+they sit outside of the modeling process, treating whatever’s happening
+inside the model as a black box and simply looking for combinations of
+hyperparameters that appear to provide best fit. The key concept to
+understand in exploring all of the available hyperparameter space is
+exploration vs. exploitation.
+
+## **Exploration vs. Exploitation**
+
+### **1. Exploration**
+
+- **Definition**: Exploring the hyperparameter space broadly to discover
+  promising regions.
+- **Goal**: Avoid getting stuck in **local optima** by considering
+  diverse configurations.
+- **Methods for Encouraging Exploration**:
+  - **Random Search**: Randomly samples hyperparameters instead of
+    following a fixed grid.
+  - **Simulated Annealing (SA)**: Allows worse-performing solutions to
+    be accepted early to escape local minima.
+  - **Bayesian Optimization with High Variance**: Uses models that
+    predict uncertainty to explore uncertain regions.
+  - **Increasing the Search Radius**: Expands the range of
+    hyperparameter changes in iterative methods.
+
+**When to Favor Exploration?** - When little is known about the best
+hyperparameters. - When hyperparameter space is **large or complex**. -
+When initial tuning attempts show multiple **local optima**.
+
+------------------------------------------------------------------------
+
+### **2. Exploitation**
+
+- **Definition**: Refining hyperparameters in a promising region based
+  on past results.
+
+- **Goal**: Improve model performance by fine-tuning the best-known
+  configurations.
+
+- **Methods for Encouraging Exploitation**:
+
+  - **Grid Search with Small Steps**: Tests small variations around the
+    best-known parameters.
+
+  - **Bayesian Optimization with Lower Variance**: Prioritizes searching
+    near the best-performing values.
+
+  - **Simulated Annealing with Low Cooling Coefficient**: Reduces the
+    probability of accepting worse solutions as iterations progress.
+
+**When to Favor Exploitation?** - When **early tuning** suggests a
+strong candidate region.
+
+- When computational resources are limited, and fine-tuning is more
+  efficient.
+
+- When the **hyperparameter space is well-behaved** (e.g., smooth and
+  convex).
+
+------------------------------------------------------------------------
+
+## **The Tradeoff: Finding the Right Balance**
+
+Hyperparameter tuning must balance **exploration and exploitation**
+dynamically. Too much **exploration** wastes computational resources,
+while too much **exploitation** risks missing the best hyperparameter
+combinations.
+
+### **Balancing Strategies**
+
+| Strategy | Balances Exploration & Exploitation By… |
+|----|----|
+| **Simulated Annealing (SA)** | Starts with high exploration (random jumps) and gradually shifts to exploitation as the temperature decreases. |
+| **Bayesian Optimization** | Uses a probabilistic model to guide the search, alternating between exploring new areas and refining promising ones. |
+| **Genetic Algorithms** | Combines random mutations (exploration) with best-performing selection (exploitation). |
+
+------------------------------------------------------------------------
+
+``` r
+library(tidyverse)
+```
+
+    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+    ## ✔ dplyr     1.1.4     ✔ readr     2.1.5
+    ## ✔ forcats   1.0.0     ✔ stringr   1.5.1
+    ## ✔ ggplot2   3.5.1     ✔ tibble    3.2.1
+    ## ✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+    ## ✔ purrr     1.0.2     
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+    ## ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+
+``` r
+library(tidymodels)
+```
+
+    ## ── Attaching packages ────────────────────────────────────── tidymodels 1.2.0 ──
+    ## ✔ broom        1.0.6     ✔ rsample      1.2.1
+    ## ✔ dials        1.3.0     ✔ tune         1.2.1
+    ## ✔ infer        1.0.7     ✔ workflows    1.1.4
+    ## ✔ modeldata    1.4.0     ✔ workflowsets 1.1.0
+    ## ✔ parsnip      1.2.1     ✔ yardstick    1.3.1
+    ## ✔ recipes      1.1.0     
+    ## ── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
+    ## ✖ scales::discard() masks purrr::discard()
+    ## ✖ dplyr::filter()   masks stats::filter()
+    ## ✖ recipes::fixed()  masks stringr::fixed()
+    ## ✖ dplyr::lag()      masks stats::lag()
+    ## ✖ yardstick::spec() masks readr::spec()
+    ## ✖ recipes::step()   masks stats::step()
+    ## • Dig deeper into tidy modeling with R at https://www.tmwr.org
+
+``` r
+library(janitor)
+```
+
+    ## 
+    ## Attaching package: 'janitor'
+    ## 
+    ## The following objects are masked from 'package:stats':
+    ## 
+    ##     chisq.test, fisher.test
+
+``` r
+library(finetune)
+```
+
+## Setup, Data Cleaning
+
+``` r
+hs<-read_csv("hsls_extract3.csv")%>%
+  clean_names()%>%
+  mutate(across(everything(), ~ ifelse(.  %in%c(-9:-4) , NA, .)))%>%
+  mutate(attend4yr=ifelse(str_detect(x5ps1sec,"4-year"),"attend 4yr","other"))%>%
+  mutate(attend4yr=as_factor(attend4yr))%>%
+  mutate(attend4yr=fct_relevel(attend4yr,c("attend 4yr","other")))%>%
+  select(-x5ps1sec)%>%
+  drop_na()
+```
+
+    ## Rows: 23503 Columns: 12
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr (10): X1PAR1EDU, X1PAR1EMP, X1HHNUMBER, X1FAMINCOME, X1STUEDEXPCT, X1IEP...
+    ## dbl  (2): X1TXMTSCOR, X1SCHOOLENG
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+## Training/Testing Split
+
+``` r
+hs_split<-initial_split(hs)
+
+hs_train<-training(hs_split)
+
+hs_test<-testing(hs_split)
+```
+
+## Recipe
+
+``` r
+attend_formula<-as.formula("attend4yr~.")
+
+hs_rec<-recipe(attend_formula,data=hs_train)%>%
+  update_role(attend4yr,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .01)%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+```
+
+## Model
+
+``` r
+hs_tune_model<- 
+  logistic_reg(penalty=tune(),mixture=tune())%>% 
+  set_engine("glmnet")
+```
+
+## Resampling Approach
+
+``` r
+hs_rs<-mc_cv(hs_train,times=25)
+```
+
+## Set Metrics
+
+``` r
+hs_metrics<-metric_set(roc_auc)
+```
+
+## Compile Workflow
+
+``` r
+hs_wf<-workflow()%>%
+  add_model(hs_tune_model)%>%
+  add_recipe(hs_rec)
+```
+
+# Simulated Annealing for Hyperparameter Tuning via Cross-Validation
+
+## Overview
+
+Simulated Annealing (SA) is a probabilistic optimization algorithm
+inspired by the annealing process in metallurgy, where a material is
+slowly cooled to settle into a stable structure. In the context of
+hyperparameter tuning, SA systematically explores the hyperparameter
+space, balancing exploration (searching broadly) and exploitation
+(refining promising areas) to identify the best-performing
+configuration.
+
+Unlike grid search or random search, SA dynamically adjusts its search
+behavior, allowing occasional acceptance of worse solutions early in the
+process to escape local minima. Over time, the probability of accepting
+worse solutions decreases, focusing the search on refining optimal
+hyperparameters.
+
+## **How Simulated Annealing Works for Hyperparameter Tuning**
+
+Simulated annealing follows these steps when tuning hyperparameters:
+
+1.  **Initialization**: Start with a randomly selected hyperparameter
+    configuration.
+2.  **Cross-Validation Evaluation**: Train and evaluate the model using
+    **cross-validation (CV)** to estimate performance.
+3.  **Generate New Candidates**:
+    - A new hyperparameter set is **randomly selected** in the **local
+      neighborhood** of the current best solution.
+    - The size of this neighborhood depends on the **radius** (explained
+      below).
+4.  **Acceptance Criteria**:
+    - If the new configuration improves performance: Accept it.
+    - If it performs worse: Accept it with some probability determined
+      by the **cooling coefficient**.
+5.  **Temperature Reduction**: The acceptance probability **decreases
+    over iterations**, making the search more conservative.
+6.  **Stopping or Restarting**:
+    - The search stops if no improvement is seen after a certain number
+      of iterations (**no_improve**).
+    - If the search stagnates, it may **restart** from a previous
+      best-known configuration.
+
+Key Elements in `Tidymodels`
+
+1.  Iterations before stopping: number of iterations without improvement
+    before stopping.
+
+2.  Iterations before restarting: Number of iterations without finding a
+    new best solution before restarting from the previous best.
+
+3.  Radius of local neighborhood: Controls how much the next candidate
+    hyperparameter set differs from the current one.
+
+4.  Cooling coefficient: Controls how quickly the probability of
+    accepting worse solutions decreases over iterations. Lower values
+    maintain exploration longer, higher values focus on exploitation.
+
+``` r
+hs_enet_tune_fit <- 
+  hs_wf %>%
+    tune_sim_anneal(hs_rs,initial = 4,metrics=hs_metrics)
+```
+
+    ## Optimizing roc_auc
+
+    ## Initial best: 0.78248
+
+    ## 1 ◯ accept suboptimal  roc_auc=0.78248 (+/-0.001238)
+
+    ## 2 ♥ new best           roc_auc=0.78249 (+/-0.001239)
+
+    ## 3 ◯ accept suboptimal  roc_auc=0.78249 (+/-0.001238)
+
+    ## 4 ♥ new best           roc_auc=0.78249 (+/-0.00124)
+
+    ## 5 ◯ accept suboptimal  roc_auc=0.78248 (+/-0.001239)
+
+    ## 6 ♥ new best           roc_auc=0.78249 (+/-0.001239)
+
+    ## 7 ◯ accept suboptimal  roc_auc=0.78248 (+/-0.001239)
+
+    ## 8 ◯ accept suboptimal  roc_auc=0.78248 (+/-0.001238)
+
+    ## 9 ◯ accept suboptimal  roc_auc=0.78248 (+/-0.001238)
+
+    ## 10 ◯ accept suboptimal  roc_auc=0.78244 (+/-0.001237)
+
+## Exploring Results
+
+``` r
+autoplot(hs_enet_tune_fit)
+```
+
+![](08-hyperparameter-tuning_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+## Select Best Fit Parameters
+
+``` r
+best_params<-select_best(hs_enet_tune_fit,metric="roc_auc")
+```
+
+## Finalize Workflow
+
+``` r
+final_enet_workflow <- hs_wf %>%
+  finalize_workflow(best_params)
+```
+
+## Fit Final Model to Training
+
+``` r
+final_model <- final_enet_workflow %>%
+  fit(data = hs_train)
+```
+
+## Test Model Fit in Training Data
+
+``` r
+predictions <- final_model %>% augment(hs_test)
+
+predictions%>%roc_auc(`.pred_attend 4yr` ,truth=attend4yr)
+```
+
+    ## # A tibble: 1 × 3
+    ##   .metric .estimator .estimate
+    ##   <chr>   <chr>          <dbl>
+    ## 1 roc_auc binary         0.783
+
+## Bayesian Optimization
+
+# **Bayesian Optimization for Hyperparameter Tuning**
+
+## **Introduction**
+
+Bayesian Optimization is a **probabilistic model-based approach** for
+hyperparameter tuning that efficiently balances **exploration**
+(searching new areas) and **exploitation** (refining the best-known
+solutions). Unlike brute-force methods such as grid search or random
+search, Bayesian Optimization constructs a **surrogate model** (often a
+Gaussian Process) to predict performance and guide the search
+intelligently.
+
+This method is particularly useful for **complex, high-dimensional
+hyperparameter spaces**, where evaluating every possible combination
+would be computationally expensive.
+
+------------------------------------------------------------------------
+
+## **How Bayesian Optimization Works**
+
+Bayesian Optimization follows these steps:
+
+1.  **Initialize with Random Evaluations**: A few initial hyperparameter
+    sets are randomly selected and evaluated using **cross-validation**.
+2.  **Build a Surrogate Model**: A **Gaussian Process (GP)** or another
+    probabilistic model estimates the objective function (e.g.,
+    validation accuracy).
+3.  **Select Next Hyperparameters Using an Acquisition Function**:
+    - Acquisition functions determine the next hyperparameter set by
+      balancing **exploration vs. exploitation**.
+4.  **Evaluate and Update**: The selected hyperparameters are evaluated,
+    and the surrogate model is updated.
+5.  **Repeat Until Convergence**: The process continues iteratively,
+    refining the search based on past results.
+
+------------------------------------------------------------------------
+
+## **Acquisition Functions: Choosing the Next Hyperparameters**
+
+The **acquisition function** is crucial in Bayesian Optimization because
+it determines **how new hyperparameter values are selected**. It
+balances **exploration (trying new regions)** and **exploitation
+(focusing on promising areas).**
+
+### **1. Expected Improvement (EI)**
+
+- **Formula**:  
+  $$
+  EI(x) = \mathbb{E} [\max(0, f(x) - f(x^*)) | x]
+  $$ where:
+
+  - $f(x)$ is the predicted performance of a new hyperparameter set.
+  - $f(x^*)$ is the best observed performance so far.
+
+- **Behavior**:
+
+  - Prioritizes configurations likely to **outperform** the current
+    best.
+  - Encourages moderate exploration while mostly focusing on
+    **exploitation**.
+
+- **Use Case**:
+
+  - When the goal is to **refine existing good hyperparameters** while
+    still allowing some exploration.
+
+- **Example in `tidymodels`**:
+
+  ``` r
+  tune_bayes(..., objective = exp_improve())
+  ```
+
+------------------------------------------------------------------------
+
+### **2. Probability of Improvement (PI)**
+
+- **Formula**:  
+  $$
+  PI(x) = P(f(x) > f(x^*) + \xi)
+  $$ where:
+  - $\xi$ is a small positive value ensuring some exploration.
+- **Behavior**:
+  - Focuses on hyperparameter sets that **are most likely to improve
+    performance**.
+  - Can be too **greedy**, favoring exploitation over exploration.
+- **Use Case**:
+  - When rapid improvement is needed, and exploration is less critical.
+
+------------------------------------------------------------------------
+
+### **3. Upper Confidence Bound (UCB)**
+
+- **Formula**:  
+  $$
+  UCB(x) = \mu(x) + \kappa \cdot \sigma(x)
+  $$ where:
+  - $\mu(x)$ is the predicted mean.
+  - $\sigma(x)$ is the uncertainty estimate.
+  - $\kappa$ controls the **exploration-exploitation tradeoff**.
+- **Behavior**:
+  - **Encourages more exploration** than EI or PI.
+  - Considers both **high predicted performance** and **high
+    uncertainty**.
+- **Use Case**:
+  - When the hyperparameter space is **large and complex**, requiring
+    **broader exploration**.
+
+## **Comparing Acquisition Functions**
+
+| Acquisition Function | Focus | Strengths | Weaknesses |
+|----|----|----|----|
+| **Expected Improvement (EI)** | Balanced | Finds improvements efficiently | Can be too conservative |
+| **Probability of Improvement (PI)** | Exploitation | Quickly finds small improvements | Can get stuck in local optima |
+| **Upper Confidence Bound (UCB)** | Exploration | Explores broad regions, robust | May waste evaluations on poor areas |
+
+------------------------------------------------------------------------
+
+``` r
+hs_control_bayes<-control_bayes(verbose=TRUE)
+
+hs_enet_tune_fit <- 
+  hs_wf %>%
+    tune_bayes(hs_rs,
+               metrics=hs_metrics,
+               objective=exp_improve(),
+               control=hs_control_bayes)
+```
+
+    ## 
+
+    ## ❯  Generating a set of 5 initial parameter results
+
+    ## ✓ Initialization complete
+
+    ## 
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+    ## i Gaussian process model
+
+    ## ✓ Gaussian process model
+
+    ## i Generating 5000 candidates
+
+    ## i Predicted candidates
+
+    ## i Estimating performance
+
+    ## i Resample01: preprocessor 1/1
+
+    ## ✓ Resample01: preprocessor 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample01: preprocessor 1/1, model 1/1
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample01: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample02: preprocessor 1/1
+
+    ## ✓ Resample02: preprocessor 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample02: preprocessor 1/1, model 1/1
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample02: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample03: preprocessor 1/1
+
+    ## ✓ Resample03: preprocessor 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample03: preprocessor 1/1, model 1/1
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample03: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample04: preprocessor 1/1
+
+    ## ✓ Resample04: preprocessor 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample04: preprocessor 1/1, model 1/1
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample04: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample05: preprocessor 1/1
+
+    ## ✓ Resample05: preprocessor 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample05: preprocessor 1/1, model 1/1
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample05: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample06: preprocessor 1/1
+
+    ## ✓ Resample06: preprocessor 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample06: preprocessor 1/1, model 1/1
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample06: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample07: preprocessor 1/1
+
+    ## ✓ Resample07: preprocessor 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample07: preprocessor 1/1, model 1/1
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample07: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample08: preprocessor 1/1
+
+    ## ✓ Resample08: preprocessor 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample08: preprocessor 1/1, model 1/1
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample08: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample09: preprocessor 1/1
+
+    ## ✓ Resample09: preprocessor 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample09: preprocessor 1/1, model 1/1
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample09: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample10: preprocessor 1/1
+
+    ## ✓ Resample10: preprocessor 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample10: preprocessor 1/1, model 1/1
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample10: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample11: preprocessor 1/1
+
+    ## ✓ Resample11: preprocessor 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample11: preprocessor 1/1, model 1/1
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample11: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample12: preprocessor 1/1
+
+    ## ✓ Resample12: preprocessor 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample12: preprocessor 1/1, model 1/1
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample12: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample13: preprocessor 1/1
+
+    ## ✓ Resample13: preprocessor 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample13: preprocessor 1/1, model 1/1
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample13: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample14: preprocessor 1/1
+
+    ## ✓ Resample14: preprocessor 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample14: preprocessor 1/1, model 1/1
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample14: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample15: preprocessor 1/1
+
+    ## ✓ Resample15: preprocessor 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample15: preprocessor 1/1, model 1/1
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample15: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample16: preprocessor 1/1
+
+    ## ✓ Resample16: preprocessor 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample16: preprocessor 1/1, model 1/1
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample16: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample17: preprocessor 1/1
+
+    ## ✓ Resample17: preprocessor 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample17: preprocessor 1/1, model 1/1
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample17: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample18: preprocessor 1/1
+
+    ## ✓ Resample18: preprocessor 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample18: preprocessor 1/1, model 1/1
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample18: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample19: preprocessor 1/1
+
+    ## ✓ Resample19: preprocessor 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample19: preprocessor 1/1, model 1/1
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample19: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample20: preprocessor 1/1
+
+    ## ✓ Resample20: preprocessor 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample20: preprocessor 1/1, model 1/1
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample20: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample21: preprocessor 1/1
+
+    ## ✓ Resample21: preprocessor 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample21: preprocessor 1/1, model 1/1
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample21: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample22: preprocessor 1/1
+
+    ## ✓ Resample22: preprocessor 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample22: preprocessor 1/1, model 1/1
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample22: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample23: preprocessor 1/1
+
+    ## ✓ Resample23: preprocessor 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample23: preprocessor 1/1, model 1/1
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample23: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample24: preprocessor 1/1
+
+    ## ✓ Resample24: preprocessor 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample24: preprocessor 1/1, model 1/1
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample24: preprocessor 1/1, model 1/1 (predictions)
+
+    ## i Resample25: preprocessor 1/1
+
+    ## ✓ Resample25: preprocessor 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1
+
+    ## ✓ Resample25: preprocessor 1/1, model 1/1
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (extracts)
+
+    ## i Resample25: preprocessor 1/1, model 1/1 (predictions)
+
+    ## ✓ Estimating performance
+
+``` r
+hs_enet_tune_fit%>%collect_metrics()
+```
+
+    ## # A tibble: 15 × 9
+    ##     penalty mixture .metric .estimator  mean     n std_err .config         .iter
+    ##       <dbl>   <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>           <int>
+    ##  1 1.22e- 5   0.225 roc_auc binary     0.782    25 0.00124 Preprocessor1_…     0
+    ##  2 4.05e- 7   0.423 roc_auc binary     0.782    25 0.00124 Preprocessor1_…     0
+    ##  3 9.22e- 2   0.442 roc_auc binary     0.766    25 0.00125 Preprocessor1_…     0
+    ##  4 1.07e- 3   0.729 roc_auc binary     0.782    25 0.00124 Preprocessor1_…     0
+    ##  5 2.97e-10   0.880 roc_auc binary     0.782    25 0.00124 Preprocessor1_…     0
+    ##  6 4.15e- 7   0.268 roc_auc binary     0.782    25 0.00124 Iter1               1
+    ##  7 1.91e- 4   0.689 roc_auc binary     0.782    25 0.00124 Iter2               2
+    ##  8 5.07e- 9   0.840 roc_auc binary     0.782    25 0.00124 Iter3               3
+    ##  9 1.10e- 9   0.189 roc_auc binary     0.782    25 0.00124 Iter4               4
+    ## 10 5.14e- 4   0.695 roc_auc binary     0.782    25 0.00124 Iter5               5
+    ## 11 4.50e- 8   0.318 roc_auc binary     0.782    25 0.00124 Iter6               6
+    ## 12 1.00e-10   0.155 roc_auc binary     0.782    25 0.00124 Iter7               7
+    ## 13 2.36e- 6   0.394 roc_auc binary     0.782    25 0.00124 Iter8               8
+    ## 14 4.90e- 5   0.493 roc_auc binary     0.782    25 0.00124 Iter9               9
+    ## 15 1.50e- 8   0.591 roc_auc binary     0.782    25 0.00124 Iter10             10
+
+``` r
+autoplot(hs_enet_tune_fit)
+```
+
+![](08-hyperparameter-tuning_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
+
+``` r
+best_params<-select_best(hs_enet_tune_fit,metric="roc_auc")
+```
+
+``` r
+final_enet_workflow <- hs_wf %>%
+  finalize_workflow(best_params)
+```
+
+``` r
+final_model <- final_enet_workflow %>%
+  fit(data = hs_train)
+```
+
+``` r
+predictions <- final_model %>% augment(hs_test)
+
+predictions%>%roc_auc(`.pred_other` ,truth=attend4yr)
+```
+
+    ## # A tibble: 1 × 3
+    ##   .metric .estimator .estimate
+    ##   <chr>   <chr>          <dbl>
+    ## 1 roc_auc binary         0.217
