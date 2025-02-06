@@ -32,10 +32,10 @@ Using the three part outcome above from hsls:
 
 1. **Model Setup**  
    - Split the data into training and testing sets.
-   - Define a multinomial logistic regression model with an **elastic net** penalty.
+   - Define a multinomial logistic regression model with an elastic net penalty.
 
 2. **Hyperparameter Tuning**  
-   - Use cross-validation to tune the **alpha** and **lambda** parameters.
+   - Use cross-validation to tune the **alpha** (mixture) and **lambda**  (penalty) parameters.
    - Identify the optimal values for these hyperparameters.
 
 3. **Model Evaluation**  
