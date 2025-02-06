@@ -1,0 +1,48 @@
+---
+title: "Assignment 4"
+author: "Will Doyle"
+date: "2025-02-06"
+output: html_document
+---
+
+Assignment 3
+
+## Part 1: Feature Engineering
+
+**Instructions:**  
+Using the hsls dataset complete the following tasks:
+
+1. **Data Cleaning & Preparation**  
+   - Change the sector variable to have three types: for-profit, not-for-profit, and public
+   - Identify and handle missing values.
+
+2. **Feature Creation**  
+   - Create interaction terms between at least two variables.
+   - Engineer at least two new features that could improve model performance.
+
+4. **Feature Selection**  
+   - Use correlation analysis to remove redundant features.
+   - Use our standard set of steps to structure and prep the data for analysis using 
+   regularization.
+ 
+## Part 2: Elastic Net for Multinomial Outcomes
+
+**Instructions:**  
+Using the three part outcome above from hsls:
+
+1. **Model Setup**  
+   - Split the data into training and testing sets.
+   - Define a multinomial logistic regression model with an **elastic net** penalty.
+
+2. **Hyperparameter Tuning**  
+   - Use cross-validation to tune the **alpha** and **lambda** parameters.
+   - Identify the optimal values for these hyperparameters.
+
+3. **Model Evaluation**  
+   - Report accuracy, and roc-auc
+ 
+4. **Comparing Models**  
+   - Compare the elastic net multinomial model to a baseline model (proportions only)
+   - Discuss the advantages and disadvantages of using elastic net regularization.
+
+
