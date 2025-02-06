@@ -39,6 +39,7 @@ The key concept to understand in exploring all of the available hyperparameter s
 -   **Goal**: Improve model performance by fine-tuning the best-known configurations.
 
 -   **Methods for Encouraging Exploitation**:
+<<<<<<< HEAD
 
     -   **Grid Search with Small Steps**: Tests small variations around the best-known parameters.
 
@@ -54,6 +55,20 @@ The key concept to understand in exploring all of the available hyperparameter s
 
 -   When the **hyperparameter space is well-behaved** (e.g., smooth and convex).
 
+    -   **Grid Search with Small Steps**: Tests small variations around the best-known parameters.
+    
+    -   **Bayesian Optimization with Lower Variance**: Prioritizes searching near the best-performing values.
+    
+    -   **Simulated Annealing with Low Cooling Coefficient**: Reduces the probability of accepting worse solutions as iterations progress.
+
+**When to Favor Exploitation?** 
+
+- When **early tuning** suggests a strong candidate region.
+
+- When computational resources are limited, and fine-tuning is more efficient.
+
+- When the **hyperparameter space is well-behaved** (e.g., smooth and convex).
+
 ## **The Tradeoff: Finding the Right Balance**
 
 Hyperparameter tuning must balance **exploration and exploitation** dynamically.
@@ -62,10 +77,12 @@ Too much **exploration** wastes computational resources, while too much **exploi
 ### **Balancing Strategies**
 
 | Strategy | Balances Exploration & Exploitation By... |
-|-------------------|-----------------------------------------------------|
+|-----------------|-------------------------------------------------------|
+
 | **Simulated Annealing (SA)** | Starts with high exploration (random jumps) and gradually shifts to exploitation as the temperature decreases. |
 | **Bayesian Optimization** | Uses a probabilistic model to guide the search, alternating between exploring new areas and refining promising ones. |
 | **Genetic Algorithms** | Combines random mutations (exploration) with best-performing selection (exploitation). |
+
 
 ```{r}
 library(tidyverse)
@@ -177,6 +194,7 @@ Key Elements in `Tidymodels`
     Lower values maintain exploration longer, higher values focus on exploitation.
 
 ```{r}
+
 hs_sim_anneal_control<-control_sim_anneal(cooling_coef=.02)
                                           
 hs_enet_tune_fit <- 
@@ -185,6 +203,7 @@ hs_enet_tune_fit <-
                     initial = 4,
                     metrics=hs_metrics,
                     control=hs_sim_anneal_control)
+
 ```
 
 ## Exploring Results
@@ -313,11 +332,10 @@ It balances **exploration (trying new regions)** and **exploitation (focusing on
 
 | Acquisition Function | Focus | Strengths | Weaknesses |
 |------------------------|----------------|----------------|----------------|
-| **Expected Improvement (EI)** | Balanced | Finds improvements efficiently | Can be too conservative |
-| **Probability of Improvement (PI)** | Exploitation | Quickly finds small improvements | Can get stuck in local optima |
-| **Upper Confidence Bound (UCB)** | Exploration | Explores broad regions, robust | May waste evaluations on poor areas |
 
-------------------------------------------------------------------------
+Bayesian Optimization is a **probabilistic model-based approach** for hyperparameter tuning that efficiently balances **exploration** (searching new areas) and **exploitation** (refining the best-known solutions). Unlike brute-force methods such as grid search or random search, Bayesian Optimization constructs a **surrogate model** (often a Gaussian Process) to predict performance and guide the search intelligently.
+
+This method is particularly useful for **complex, high-dimensional hyperparameter spaces**, where evaluating every possible combination would be computationally expensive.
 
 ```{r}
 hs_control_bayes<-control_bayes(verbose=TRUE)
@@ -357,3 +375,4 @@ predictions <- final_model %>% augment(hs_test)
 
 predictions%>%roc_auc(`.pred_attend 4yr` ,truth=attend4yr)
 ```
+
