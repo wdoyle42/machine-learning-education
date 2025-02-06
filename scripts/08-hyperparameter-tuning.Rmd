@@ -12,7 +12,6 @@ editor_options:
 knitr::opts_chunk$set(cache = TRUE)
 ```
 
-
 Today we'll cover two approaches to hyperparameter tuning: simulated annealing and Bayesian optimization.
 Both of these are similar in that they sit outside of the modeling process, treating whatever's happening inside the model as a black box and simply looking for combinations of hyperparameters that appear to provide best fit.
 The key concept to understand in exploring all of the available hyperparameter space is exploration vs. exploitation.
@@ -33,8 +32,6 @@ The key concept to understand in exploring all of the available hyperparameter s
 - When hyperparameter space is **large or complex**.
 - When initial tuning attempts show multiple **local optima**.
 
-
-
 ### **2. Exploitation**
 
 -   **Definition**: Refining hyperparameters in a promising region based on past results.
@@ -42,20 +39,20 @@ The key concept to understand in exploring all of the available hyperparameter s
 -   **Goal**: Improve model performance by fine-tuning the best-known configurations.
 
 -   **Methods for Encouraging Exploitation**:
+
     -   **Grid Search with Small Steps**: Tests small variations around the best-known parameters.
-    
+
     -   **Bayesian Optimization with Lower Variance**: Prioritizes searching near the best-performing values.
-    
+
     -   **Simulated Annealing with Low Cooling Coefficient**: Reduces the probability of accepting worse solutions as iterations progress.
 
-**When to Favor Exploitation?** 
+**When to Favor Exploitation?**
 
-- When **early tuning** suggests a strong candidate region.
+-   When **early tuning** suggests a strong candidate region.
 
-- When computational resources are limited, and fine-tuning is more efficient.
+-   When computational resources are limited, and fine-tuning is more efficient.
 
-- When the **hyperparameter space is well-behaved** (e.g., smooth and convex).
-
+-   When the **hyperparameter space is well-behaved** (e.g., smooth and convex).
 
 ## **The Tradeoff: Finding the Right Balance**
 
@@ -65,12 +62,10 @@ Too much **exploration** wastes computational resources, while too much **exploi
 ### **Balancing Strategies**
 
 | Strategy | Balances Exploration & Exploitation By... |
-|-----------------|-------------------------------------------------------|
+|-------------------|-----------------------------------------------------|
 | **Simulated Annealing (SA)** | Starts with high exploration (random jumps) and gradually shifts to exploitation as the temperature decreases. |
 | **Bayesian Optimization** | Uses a probabilistic model to guide the search, alternating between exploring new areas and refining promising ones. |
 | **Genetic Algorithms** | Combines random mutations (exploration) with best-performing selection (exploitation). |
-
-
 
 ```{r}
 library(tidyverse)
@@ -182,9 +177,14 @@ Key Elements in `Tidymodels`
     Lower values maintain exploration longer, higher values focus on exploitation.
 
 ```{r}
+hs_sim_anneal_control<-control_sim_anneal(cooling_coef=.02)
+                                          
 hs_enet_tune_fit <- 
   hs_wf %>%
-    tune_sim_anneal(hs_rs,initial = 4,metrics=hs_metrics)
+    tune_sim_anneal(hs_rs,
+                    initial = 4,
+                    metrics=hs_metrics,
+                    control=hs_sim_anneal_control)
 ```
 
 ## Exploring Results
@@ -226,97 +226,98 @@ predictions%>%roc_auc(`.pred_attend 4yr` ,truth=attend4yr)
 # **Bayesian Optimization for Hyperparameter Tuning**
 
 ## **Introduction**
-Bayesian Optimization is a **probabilistic model-based approach** for hyperparameter tuning that efficiently balances **exploration** (searching new areas) and **exploitation** (refining the best-known solutions). Unlike brute-force methods such as grid search or random search, Bayesian Optimization constructs a **surrogate model** (often a Gaussian Process) to predict performance and guide the search intelligently.
+
+Bayesian Optimization is a **probabilistic model-based approach** for hyperparameter tuning that efficiently balances **exploration** (searching new areas) and **exploitation** (refining the best-known solutions).
+Unlike brute-force methods such as grid search or random search, Bayesian Optimization constructs a **surrogate model** (often a Gaussian Process) to predict performance and guide the search intelligently.
 
 This method is particularly useful for **complex, high-dimensional hyperparameter spaces**, where evaluating every possible combination would be computationally expensive.
 
----
+------------------------------------------------------------------------
 
 ## **How Bayesian Optimization Works**
+
 Bayesian Optimization follows these steps:
 
-1. **Initialize with Random Evaluations**: A few initial hyperparameter sets are randomly selected and evaluated using **cross-validation**.
-2. **Build a Surrogate Model**: A **Gaussian Process (GP)** or another probabilistic model estimates the objective function (e.g., validation accuracy).
-3. **Select Next Hyperparameters Using an Acquisition Function**: 
-   - Acquisition functions determine the next hyperparameter set by balancing **exploration vs. exploitation**.
-4. **Evaluate and Update**: The selected hyperparameters are evaluated, and the surrogate model is updated.
-5. **Repeat Until Convergence**: The process continues iteratively, refining the search based on past results.
+1.  **Initialize with Random Evaluations**: A few initial hyperparameter sets are randomly selected and evaluated using **cross-validation**.
+2.  **Build a Surrogate Model**: A **Gaussian Process (GP)** or another probabilistic model estimates the objective function (e.g., validation accuracy).
+3.  **Select Next Hyperparameters Using an Acquisition Function**:
+    -   Acquisition functions determine the next hyperparameter set by balancing **exploration vs. exploitation**.
+4.  **Evaluate and Update**: The selected hyperparameters are evaluated, and the surrogate model is updated.
+5.  **Repeat Until Convergence**: The process continues iteratively, refining the search based on past results.
 
----
+------------------------------------------------------------------------
 
 ## **Acquisition Functions: Choosing the Next Hyperparameters**
-The **acquisition function** is crucial in Bayesian Optimization because it determines **how new hyperparameter values are selected**. It balances **exploration (trying new regions)** and **exploitation (focusing on promising areas).**
+
+The **acquisition function** is crucial in Bayesian Optimization because it determines **how new hyperparameter values are selected**.
+It balances **exploration (trying new regions)** and **exploitation (focusing on promising areas).**
 
 ### **1. Expected Improvement (EI)**
-- **Formula**:  
-  \[
-  EI(x) = \mathbb{E} [\max(0, f(x) - f(x^*)) | x]
-  \]
-  where:
-  - \( f(x) \) is the predicted performance of a new hyperparameter set.
-  - \( f(x^*) \) is the best observed performance so far.
 
-- **Behavior**:
-  - Prioritizes configurations likely to **outperform** the current best.
-  - Encourages moderate exploration while mostly focusing on **exploitation**.
-  
-- **Use Case**:
-  - When the goal is to **refine existing good hyperparameters** while still allowing some exploration.
+-   **Formula**:\
+    $$
+    EI(x) = \mathbb{E} [\max(0, f(x) - f(x^*)) | x]
+    $$ where:
 
-- **Example in `tidymodels`**:
-  ```r
-  tune_bayes(..., objective = exp_improve())
-  ```
+    -   $f(x)$ is the predicted performance of a new hyperparameter set.
+    -   $f(x^*)$ is the best observed performance so far.
 
----
+-   **Behavior**:
+
+    -   Prioritizes configurations likely to **outperform** the current best.
+    -   Encourages moderate exploration while mostly focusing on **exploitation**.
+
+-   **Use Case**:
+
+    -   When the goal is to **refine existing good hyperparameters** while still allowing some exploration.
+
+-   **Example in `tidymodels`**:
+
+    ``` r
+    tune_bayes(..., objective = exp_improve())
+    ```
+
+------------------------------------------------------------------------
 
 ### **2. Probability of Improvement (PI)**
-- **Formula**:  
-  \[
-  PI(x) = P(f(x) > f(x^*) + \xi)
-  \]
-  where:
-  - \( \xi \) is a small positive value ensuring some exploration.
 
-- **Behavior**:
-  - Focuses on hyperparameter sets that **are most likely to improve performance**.
-  - Can be too **greedy**, favoring exploitation over exploration.
+-   **Formula**:\
+    $$
+    PI(x) = P(f(x) > f(x^*) + \xi)
+    $$ where:
+    -   $\xi$ is a small positive value ensuring some exploration.
+-   **Behavior**:
+    -   Focuses on hyperparameter sets that **are most likely to improve performance**.
+    -   Can be too **greedy**, favoring exploitation over exploration.
+-   **Use Case**:
+    -   When rapid improvement is needed, and exploration is less critical.
 
-- **Use Case**:
-  - When rapid improvement is needed, and exploration is less critical.
-
-
----
+------------------------------------------------------------------------
 
 ### **3. Upper Confidence Bound (UCB)**
-- **Formula**:  
-  \[
-  UCB(x) = \mu(x) + \kappa \cdot \sigma(x)
-  \]
-  where:
-  - \( \mu(x) \) is the predicted mean.
-  - \( \sigma(x) \) is the uncertainty estimate.
-  - \( \kappa \) controls the **exploration-exploitation tradeoff**.
 
-- **Behavior**:
-  - **Encourages more exploration** than EI or PI.
-  - Considers both **high predicted performance** and **high uncertainty**.
-  
-- **Use Case**:
-  - When the hyperparameter space is **large and complex**, requiring **broader exploration**.
-
+-   **Formula**:\
+    $$
+    UCB(x) = \mu(x) + \kappa \cdot \sigma(x)
+    $$ where:
+    -   $\mu(x)$ is the predicted mean.
+    -   $\sigma(x)$ is the uncertainty estimate.
+    -   $\kappa$ controls the **exploration-exploitation tradeoff**.
+-   **Behavior**:
+    -   **Encourages more exploration** than EI or PI.
+    -   Considers both **high predicted performance** and **high uncertainty**.
+-   **Use Case**:
+    -   When the hyperparameter space is **large and complex**, requiring **broader exploration**.
 
 ## **Comparing Acquisition Functions**
+
 | Acquisition Function | Focus | Strengths | Weaknesses |
-|----------------------|-------|-----------|------------|
+|------------------------|----------------|----------------|----------------|
 | **Expected Improvement (EI)** | Balanced | Finds improvements efficiently | Can be too conservative |
 | **Probability of Improvement (PI)** | Exploitation | Quickly finds small improvements | Can get stuck in local optima |
 | **Upper Confidence Bound (UCB)** | Exploration | Explores broad regions, robust | May waste evaluations on poor areas |
 
----
-
-
-
+------------------------------------------------------------------------
 
 ```{r}
 hs_control_bayes<-control_bayes(verbose=TRUE)
@@ -332,7 +333,6 @@ hs_enet_tune_fit <-
 ```{r}
 hs_enet_tune_fit%>%collect_metrics()
 ```
-
 
 ```{r}
 autoplot(hs_enet_tune_fit)
@@ -355,6 +355,5 @@ final_model <- final_enet_workflow %>%
 ```{r}
 predictions <- final_model %>% augment(hs_test)
 
-predictions%>%roc_auc(`.pred_other` ,truth=attend4yr)
+predictions%>%roc_auc(`.pred_attend 4yr` ,truth=attend4yr)
 ```
-

@@ -1,0 +1,287 @@
+---
+title: "Classification and Regression Trees (CART)"
+author: "Will Doyle"
+date: "2025-02-06"
+output: github_document
+---
+
+Regression trees have an elegant simplicity. The idea is straightforward: for each variable in the dataset, the tree considers a decision rule that splits the data to maximize predictive accuracy. The first split is made using the variable that provides the most information about the outcome, based on a chosen accuracy measure. After the first split, the process continues recursively down each branch, with each subsequent split chosen to maximize the separation of the data according to the accuracy measure.
+
+Three key hyperparameters control the growth of a regression tree. The first is tree depth, which sets the maximum number of splits allowed. The second is minimum sample size per leaf, which ensures that each terminal node contains at least a specified number of observations. The third is cost complexity, which acts as a pruning mechanism.
+
+Cost complexity sets a threshold for how much each additional split must improve model fit to justify its inclusion. A lower cost complexity allows the tree to grow more extensively, capturing more patterns (but potentially overfitting). A higher cost complexity requires each additional split to provide a significant improvement in accuracy, leading to a simpler, more generalizable model.
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(rpart)
+library(rpart.plot)
+```
+
+A new Dataset!
+
+Today we'll be working with a new dataset, the Open University Dataset. The Open University Learning Analytics Dataset (OULAD), donated to the UCI Machine Learning Repository on December 20, 2015, encompasses data from the years 2013 and 2014. This dataset provides a comprehensive view of student interactions within a virtual learning environment (VLE) and is structured into several interconnected tables, each offering distinct insights:
+
+Student Information (studentInfo.csv):
+
+Contains demographic details of 32,593 students, including age, gender, region, highest education level, and disability status.
+Records the final results of students in their respective module presentations.
+Courses (courses.csv):
+
+Lists 22 modules along with their presentations, identified by module and presentation codes.
+Specifies the length of each module presentation in days.
+Student Registration (studentRegistration.csv):
+
+Details the registration dates of students for specific module presentations.
+Includes unregistration dates for students who withdrew before completion.
+Assessments (assessments.csv):
+
+Provides information on 206 assessments across various modules, including assessment types (e.g., Tutor Marked Assessment, Computer Marked Assessment, Final Exam), cut-off dates, and their respective weights.
+Student Assessment (studentAssessment.csv):
+
+Records 173,912 entries of student assessment results, capturing submission dates, scores, and indicators of resubmitted assessments.
+Virtual Learning Environment (vle.csv):
+
+Catalogs 6,364 VLE materials, such as HTML pages and PDFs, associated with each module.
+Details the type of activity and the weeks during which the materials are intended to be used.
+Student VLE Interaction (studentVle.csv):
+
+Logs 10,655,280 records of student interactions with VLE materials, noting the number of clicks per material per day.
+
+I did the data cleaning for this separately (code is in `_oulad.R`).  It begins by loading several datasets related to student performance, assessments, registrations, and virtual learning environment (VLE) interactions. The code then aggregates student interactions with VLE materials, grouping them by module, presentation, and activity type to calculate the total number of clicks per student for each class session.
+
+Next, the script merges the student VLE interaction data with student demographic and performance data. It recodes the final results into two categories: "passed" (including "Pass" and "Distinction") and "not passed" (including "Fail" and "Withdrawn"). The dataset is then transformed into a wider format, where different types of VLE activity become separate columns, making it easier for analysis. Finally, missing values represented by "?" are converted to NA, and the cleaned dataset is saved as a CSV file for further use.
+
+```{r}
+ou<-read_csv("oulad.csv")%>%
+  mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%
+  select(-final_result)
+```
+
+```{r}
+ou_split<-initial_split(ou)
+
+ou_train<-training(ou_split)
+
+ou_test<-testing(ou_split)
+```
+
+
+
+```{r}
+ ou_train %>%
+  group_by(code_module,code_presentation) %>%
+  summarize(
+    total = n(),  # Total number in each income group
+    passed = sum(result == "passed", na.rm = TRUE),
+    proportion_passed = passed / total
+  ) %>%
+  ungroup()%>%
+  arrange(-proportion_passed)
+```
+
+```{r}
+cc<-.0001
+td<-10
+n_min<-10
+
+tree_spec<-decision_tree(
+  cost_complexity =cc , # alpha, 0= keep everything, 1=drop everything
+  tree_depth = td, # How many splits before coming to a decision
+  min_n=n_min)%>% # minimum n for each node
+  set_engine("rpart")%>%
+  set_mode("classification")
+```
+
+
+```{r}
+ou_limited<-ou_train%>%
+  select(result,
+         num_of_prev_attempts,
+         studied_credits,
+         age_band,
+        gender,
+        highest_education)
+```
+
+```{r}
+tree_formula<-as.formula("result~.")
+```
+
+
+```{r}
+tree_rec<-recipe(tree_formula,ou_limited)%>%
+  update_role(result,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .1)%>%
+  step_unknown(all_nominal_predictors())%>%
+  step_dummy(all_nominal_predictors())
+```
+
+We'll start off by creating a simple tree model and 
+
+```{r}
+
+cc<-.001
+n_min=10
+n_trees=10
+
+small_tree <- decision_tree(
+  cost_complexity=cc,
+  min_n = 10,
+  tree_depth=10) %>%
+   set_engine("rpart") %>%
+   set_mode("classification")
+
+#workflow
+ tree_wf <- workflow() %>%
+   add_recipe(tree_rec) %>%
+   add_model(small_tree) %>%
+   fit(ou_limited) #results are found here 
+
+ tree_fit <- tree_wf %>% 
+  extract_fit_parsnip()
+ 
+rpart.plot(tree_fit$fit)
+ 
+# Plot tree before pruning
+rpart.plot(tree_fit$fit, main = "Initial Tree")
+
+# Display cost complexity table
+printcp(tree_fit$fit)
+
+# Prune tree at "optimal" cp
+optimal_cp <- tree_fit$fit$cptable[which.min(tree_model$cptable[, "xerror"]), "CP"]
+pruned_tree <- prune(tree_fit$fit, cp = optimal_cp)
+
+# Plot pruned tree
+rpart.plot(pruned_tree, main = "Pruned Tree") 
+```
+
+
+
+
+```{r}
+tree_spec<-decision_tree(
+  cost_complexity = tune(), # alpha, 0= keep everything, 1=drop everything
+  tree_depth = tune(), # How many splits before coming to a decision
+  min_n=tune())%>% # minimum n for each node
+  set_engine("rpart")%>%
+  set_mode("classification")
+```
+
+
+1. cost_complexity() (Complexity Parameter, cp)
+
+What it does: Prunes the tree by penalizing splits that do not significantly improve model performance.
+Higher values: Reduce the number of splits, leading to simpler trees (risking underfitting).
+Lower values: Allow more splits, making trees deeper and more complex (risking overfitting).
+
+2. tree_depth() (Maximum Depth of the Tree)
+What it does: Limits the number of levels in the tree.
+Deeper trees: Capture more complex patterns but risk overfitting.
+Shallower trees: Improve generalization but may underfit if too shallow.
+
+3. min_n() (Minimum Number of Observations in a Node)
+What it does: Sets the minimum number of data points required in a node for a split to occur.
+Higher values: Prevent splitting when there aren’t enough observations, leading to simpler trees.
+Lower values: Allow smaller groups to be split, creating more complex trees.
+
+```{r}
+tree_grid<-grid_regular(cost_complexity(),
+                        tree_depth(),
+                        min_n(),
+                        levels=4)
+```
+
+
+```{r}
+tree_formula<-as.formula("result~.")
+```
+
+
+```{r}
+tree_rec<-recipe(tree_formula,ou_train)%>%
+  update_role(result,new_role = "outcome")%>%
+  update_role(id_student,new_role="id")%>%
+  step_other(all_nominal_predictors(),threshold = .1)%>%
+  step_unknown(all_nominal_predictors())%>%
+  step_dummy(all_nominal_predictors())
+```
+
+```{r}
+tree_rec%>%prep%>%bake(ou_train)
+```
+
+```{r}
+ou_fold<-vfold_cv(ou_train,v=20)
+```
+
+
+```{r}
+tree_wf<-workflow()%>%
+  add_model(tree_spec)%>%
+  add_recipe(tree_rec)
+```
+
+
+```{r}
+
+fit_model<-FALSE
+if(fit_model){
+doParallel::registerDoParallel()
+
+tree_rs <- tree_wf%>%
+  tune_grid(
+  resamples = ou_fold,
+  grid = tree_grid,
+  metrics = metric_set(sensitivity,specificity,roc_auc)
+)
+
+save(tree_rs,file = "tree_rs.Rdata")
+} else {
+load("tree_rs.Rdata")
+}
+```
+
+```{r}
+collect_metrics(tree_rs)%>%
+  filter(.metric=="roc_auc")%>%
+  arrange(-mean)
+
+```
+
+```{r}
+autoplot(tree_rs)
+```
+
+```{r}
+show_best(tree_rs,metric="roc_auc")
+```
+
+```{r}
+final_tree<-finalize_model(tree_spec,select_best(tree_rs, "roc_auc"))
+```
+
+```{r}
+final_rs <- last_fit(final_tree, tree_rec, cars_split)
+```
+
+```{r}
+
+final_wf<-workflow()%>%
+  add_model(final_tree)%>%
+  add_recipe(tree_rec)
+
+final_fit <- final_wf%>%fit(cars_train)
+
+```
+
+```{r}
+final_fit %>% extract_fit_parsnip()%>%
+  vip(geom = "col", aesthetics = list(fill = "purple", alpha = 0.8)) +
+  scale_y_continuous(expand = c(0, 0))
+```
+
+
