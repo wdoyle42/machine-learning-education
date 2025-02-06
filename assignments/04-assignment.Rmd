@@ -5,7 +5,7 @@ date: "2025-02-06"
 output: html_document
 ---
 
-Assignment 3
+Assignment 4: feature engineering and multinomial outcomes. 
 
 ## Part 1: Feature Engineering
 
