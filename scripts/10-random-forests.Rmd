@@ -125,6 +125,8 @@ save(rf_tune_res,file="rf_tune_res.Rdata")
 ```{r}
 rf_tune_res %>%
   collect_metrics() %>%
+  group_by(min_n,mtry)%>%
+  count()
   filter(.metric == "roc_auc") %>%
   select(mean, min_n, mtry) %>%
   pivot_longer(min_n:mtry,
@@ -166,4 +168,7 @@ final_res <- final_wf %>%
 
 final_res %>%
   collect_metrics()
+
+ou_rec%>%
+  prep()
 ```
