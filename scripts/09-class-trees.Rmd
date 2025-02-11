@@ -71,10 +71,14 @@ ou_test<-testing(ou_split)
 
 
 ```{r}
+
+ou_train%>%
+  group_by(result)%>%
+  count()
  ou_train %>%
   group_by(code_module,code_presentation) %>%
   summarize(
-    total = n(),  # Total number in each income group
+    total = n(),  # Total number in each class group
     passed = sum(result == "passed", na.rm = TRUE),
     proportion_passed = passed / total
   ) %>%
@@ -100,10 +104,11 @@ tree_spec<-decision_tree(
 ou_limited<-ou_train%>%
   select(result,
          num_of_prev_attempts,
-         studied_credits,
-         age_band,
-        gender,
-        highest_education)
+         studied_credits)
+#,
+#        age_band,
+#       gender,
+#        highest_education)
 ```
 
 ```{r}
@@ -152,7 +157,7 @@ rpart.plot(tree_fit$fit, main = "Initial Tree")
 printcp(tree_fit$fit)
 
 # Prune tree at "optimal" cp
-optimal_cp <- tree_fit$fit$cptable[which.min(tree_model$cptable[, "xerror"]), "CP"]
+optimal_cp <- tree_fit$fit$cptable[which.min(tree_fit$fit$cptable[, "xerror"]), "CP"]
 pruned_tree <- prune(tree_fit$fit, cp = optimal_cp)
 
 # Plot pruned tree
@@ -258,14 +263,18 @@ autoplot(tree_rs)
 
 ```{r}
 show_best(tree_rs,metric="roc_auc")
+
+final_params<-select_best(tree_rs,metric="roc_auc")
 ```
 
 ```{r}
-final_tree<-finalize_model(tree_spec,select_best(tree_rs, "roc_auc"))
+final_tree<-finalize_model(tree_spec,final_params)
 ```
 
 ```{r}
-final_rs <- last_fit(final_tree, tree_rec, cars_split)
+final_test <- last_fit(final_tree, tree_rec, ou_split)
+
+final_test%>%collect_metrics()
 ```
 
 ```{r}
@@ -274,14 +283,17 @@ final_wf<-workflow()%>%
   add_model(final_tree)%>%
   add_recipe(tree_rec)
 
-final_fit <- final_wf%>%fit(cars_train)
+final_fit <- final_wf%>%fit(ou_train)
 
 ```
 
 ```{r}
-final_fit %>% extract_fit_parsnip()%>%
-  vip(geom = "col", aesthetics = list(fill = "purple", alpha = 0.8)) +
-  scale_y_continuous(expand = c(0, 0))
+
+final_fit_result<- final_fit%>% 
+  extract_fit_parsnip()
+
+rpart.plot(final_fit_result$fit)
+
 ```
 
 

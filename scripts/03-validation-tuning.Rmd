@@ -142,7 +142,7 @@ hs_tune_model<-
 Now that we've said which parameter to tune, we'll use the `grid_regular` command to get a set of nicely spaced out values. This command is specific to the parameter, so it will choose reasonable values for a penalty. 
 
 ```{r}
-lasso_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model) ,levels=10)
+lasso_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model), levels=10)
 ```
 
 We can use `update_model` to change our workflow with the new model. 

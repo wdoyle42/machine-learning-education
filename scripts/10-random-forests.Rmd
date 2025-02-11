@@ -1,0 +1,169 @@
+---
+title: "Random Forests"
+author: "Will Doyle"
+date: "2025-02-11"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(finetune)
+library(janitor)
+```
+
+
+```{r}
+ou<-read_csv("oulad.csv")%>%
+  mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%
+  select(-final_result)
+```
+
+```{r}
+ou_split<-initial_split(ou)
+
+ou_train<-training(ou_split)
+
+ou_test<-testing(ou_split)
+```
+
+
+
+
+## Formula and Recipe, same as last time
+
+```{r}
+rf_formula<-as.formula("result~.")
+```
+
+
+```{r}
+ou_rec<-recipe(rf_formula,ou_train)%>%
+  update_role(result,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .05)%>%
+  step_unknown(all_nominal_predictors())%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_zv(all_predictors())
+```
+
+
+## Random Forest Specification
+
+A random forest extends the logic of a decision tree, by taking advantage of the 
+ability to (a) resample the data and (b) sample only a small number of the variables for a given tree. The result is an ensemble model-- a "forest" made up of a large number of trees. The forest then takes incoming data and "votes" on its most likely classification. Here's a step-by-step explanation.
+
+1. A bootstrap resample is created. As a quick review, a bootstrap sample is a sample that is the same size as the original dataset, but is created by randomly sampling with replacement from the existing dataset. In practice, this means repeating some observations and dropping some other observations randomly. 
+
+2. For the first node in the first tree, a random selection of variables is chosen, and then the standard decision tree approach is used to split the data into the next nodes. The number of random variables to choose from is the `mtry` or "variables to try" hyperparameter for these models. At the next nodes, the algorithm again chooses a random subset of variables and again splits. 
+
+3. The algorithm continues until it has no further splits or it reaches a stopping point set by the hyperparameter minimum node size, or `min_n`. 
+
+4. This process is repeated for any number of trees that you might want to specify. This is another hyperparameter, but is most often not tuned, but set to 1,000.
+
+This then is the list of tuneable parameters for random forests:
+
+1. Number of trees (rarely tuned):  
+2. Number of variables
+3. Minimum N per node
+
+## Voting Rules
+
+The model creates a number of trees equal to however many were specified by the analyst. When assessment or testing data is used, each tree "votes" for a class prediction. The prediction with the most number of votes becomes the predicted label for that case. In the case of regression, the predicted value is the average of the predictions from all of the trees. 
+
+Error rates for these models can be calculated using out-of-bag (OOB) samples. The out of bag sample is the excluded portion of the data from   In that case, after each tree is built, the OOB sample is used to assess the accuracy of that specific tree by predicting outcomes for these excluded observations. This process is repeated for all trees, and the OOB error is computed as the average prediction error across all OOB samples. Instead of this we'll follow our normal procedure of cross validation, in this case using k-fold cross validation with 10 folds (the default). 
+
+```{r}
+rf_spec <- rand_forest(
+  mtry = tune(),
+  trees = 100, 
+  min_n = tune()
+) %>%
+  set_mode("classification") %>%
+  set_engine("ranger")
+```
+
+Here I create a very basic grid to work through. 
+
+```{r}
+ou_grid<-grid_regular( mtry(range = c(18, 20)), ## Should be wider range
+  min_n(range = c(15, 17)), ## Should be wider range
+  levels = 3)
+```
+
+## Specify Workflow
+
+```{r}
+ou_wf <- workflow() %>%
+  add_recipe(ou_rec) %>%
+  add_model(rf_spec)
+```
+
+```{r}
+ou_rs<-ou%>%vfold_cv()
+```
+
+## Fit Model
+
+```{r}
+fit_model<-TRUE
+
+if(fit_model){
+rf_tune_res <- tune_grid(
+  ou_wf,
+  ou_grid,
+  resamples = ou_rs,
+)
+save(rf_tune_res,file="rf_tune_res.Rdata")
+} else{
+  load("rf_tune_res.Rdata")
+}
+```
+
+
+## Check Model Fit
+
+```{r}
+rf_tune_res %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  select(mean, min_n, mtry) %>%
+  pivot_longer(min_n:mtry,
+    values_to = "value",
+    names_to = "parameter"
+  ) %>%
+  ggplot(aes(value, mean, color = parameter)) +
+  geom_point(show.legend = FALSE) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(x = NULL, y = "AUC")
+```
+
+
+## Finalize
+
+```{r}
+best_auc <- select_best(rf_tune_res, "roc_auc")
+
+final_rf <- finalize_model(
+  rf_tune_spec,
+  best_auc
+)
+
+final_rf
+```
+
+
+## Fit Best Model To Training Data, Check Against Testing
+
+When applied to the testing data, the ensemble of trees will again parse the datasets tree-by-tree and come up with a predicted label based on the highest vote among the trees. This label will be used to calculate accuracy of the model. 
+
+```{r}
+final_wf <- workflow() %>%
+  add_recipe(ou_rec) %>%
+  add_model(final_rf)
+
+final_res <- final_wf %>%
+  last_fit(ou_split)
+
+final_res %>%
+  collect_metrics()
+```
