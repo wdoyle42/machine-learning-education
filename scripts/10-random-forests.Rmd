@@ -2,7 +2,7 @@
 title: "Random Forests"
 author: "Will Doyle"
 date: "2025-02-11"
-output: html_document
+output: github_document
 ---
 
 ```{r}
@@ -105,7 +105,7 @@ ou_rs<-ou%>%vfold_cv()
 ## Fit Model
 
 ```{r}
-fit_model<-TRUE
+fit_model<-FALSE
 
 if(fit_model){
 rf_tune_res <- tune_grid(
@@ -141,10 +141,10 @@ rf_tune_res %>%
 ## Finalize
 
 ```{r}
-best_auc <- select_best(rf_tune_res, "roc_auc")
+best_auc <- select_best(rf_tune_res,metric = "roc_auc")
 
 final_rf <- finalize_model(
-  rf_tune_spec,
+  rf_spec,
   best_auc
 )
 
