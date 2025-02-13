@@ -1,0 +1,39 @@
+---
+title: "Assignment 5"
+author: "Will Doyle"
+date: "2025-02-06"
+output: html_document
+---
+
+# Homework Assignment: Predicting Course Withdrawal Using Open University Data
+
+## Objective:
+In this assignment, you will explore the Open University dataset to predict whether a student will withdraw from a course. 
+
+### Step 1: Data Preparation
+1. Load the Open University dataset.  
+2. Familiarize yourself with the key variables, focusing on the target variable (`Withdrawn`) and possible predictors (e.g., `age`, `num_of_prev_attempts`, `final_result`).
+
+### Step 2: Bivariate Analysis
+1. Select one predictor that you believe may be associated with withdrawal.
+2. Create a bivariate table or graphical display (e.g., bar plot, contingency table) showing the relationship between the predictor and withdrawal status.
+3. Summarize what this display tells you about the potential relationship.
+
+### Step 3: Build a Classification Tree
+1. Use a classification tree to predict course withdrawal based on a small number of selected predictors.
+2. Visualize a the tree and describe how it splits the data.
+3. Build a larger model using the full dataset. 
+4. Tune the hyperparameters of the classification tree and use the result to fit a final model. 
+3. Evaluate the model's performance using appropriate metrics (e.g., accuracy, precision, recall, and confusion matrix).
+
+### Step 4: Build a Random Forest Model
+1. Build and tune the mtry and depth parameters of a random forest. Set the number of trees to 100. 
+2. Select the best fit and test it against the testing dataset. 
+3. Evaluate the random forest's performance using the same metrics as in Step 3.
+4. Discuss how random forests differ from single decision trees. (2-3 sentences)
+
+### Step 5: Model Comparison
+1. Compare the performance metrics of the classification tree and the random forest.
+2. Discuss which model performs better and why.
+3. Reflect on situations in which a classification tree might be preferred over a random forest or vice versa (1-2 sentences).
+

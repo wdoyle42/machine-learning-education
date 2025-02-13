@@ -124,7 +124,7 @@ tree_rec<-recipe(tree_formula,ou_limited)%>%
   step_dummy(all_nominal_predictors())
 ```
 
-We'll start off by creating a simple tree model and 
+We'll start off by creating a simple tree model and fitting it so we can visualize the results. 
 
 ```{r}
 

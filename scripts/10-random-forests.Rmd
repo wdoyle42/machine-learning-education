@@ -2,7 +2,7 @@
 title: "Random Forests"
 author: "Will Doyle"
 date: "2025-02-11"
-output: github_document
+output: pdf_document
 ---
 
 ```{r}
@@ -85,8 +85,8 @@ rf_spec <- rand_forest(
 Here I create a very basic grid to work through. 
 
 ```{r}
-ou_grid<-grid_regular( mtry(range = c(18, 20)), ## Should be wider range
-  min_n(range = c(15, 17)), ## Should be wider range
+ou_grid<-grid_regular(mtry(range = c(10, 20)), ## Should be wider range
+  min_n(range = c(12, 17)), ## Should be wider range
   levels = 3)
 ```
 
@@ -105,7 +105,7 @@ ou_rs<-ou%>%vfold_cv()
 ## Fit Model
 
 ```{r}
-fit_model<-FALSE
+fit_model<-TRUE
 
 if(fit_model){
 rf_tune_res <- tune_grid(
@@ -170,5 +170,10 @@ final_res %>%
   collect_metrics()
 
 ou_rec%>%
-  prep()
+  prep()%>%
+  bake(ou_train)%>%dim()
+
+ou_train%>%
+  group_by(result)%>%
+  count()
 ```

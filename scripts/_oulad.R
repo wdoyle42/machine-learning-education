@@ -46,3 +46,25 @@ ou<-ou%>%
   mutate(across(where(is.character), ~na_if(., "?")))
 
 write_csv(ou,file="oulad.csv")
+
+
+## Second Version, all pased, with distinction or not
+## Recode outcome
+
+ou<-si%>%filter(final_result%in%c("Pass","Distinction"))%>%
+  mutate(result=fct_collapse(as_factor(final_result),
+                                    distinction=c("Distinction"),
+                                    other=c("Pass")))
+
+
+## One variable per sum clicks per activity
+ou<-ou%>%pivot_wider(names_from=activity_type,values_from = clicks)
+
+## Messed up level shhhhhh
+ou<-ou%>%select(-("NA"))
+
+## q marks=NA
+ou<-ou%>%
+  mutate(across(where(is.character), ~na_if(., "?")))
+
+write_csv(ou,file="oulad2.csv")
