@@ -105,12 +105,12 @@ ou_rs<-ou%>%vfold_cv()
 ## Fit Model
 
 ```{r}
-fit_model<-TRUE
+fit_model<-FALSE
 
 if(fit_model){
 rf_tune_res <- tune_grid(
   ou_wf,
-  ou_grid,
+  grid=ou_grid,
   resamples = ou_rs,
 )
 save(rf_tune_res,file="rf_tune_res.Rdata")
@@ -126,7 +126,6 @@ save(rf_tune_res,file="rf_tune_res.Rdata")
 rf_tune_res %>%
   collect_metrics() %>%
   group_by(min_n,mtry)%>%
-  count()
   filter(.metric == "roc_auc") %>%
   select(mean, min_n, mtry) %>%
   pivot_longer(min_n:mtry,

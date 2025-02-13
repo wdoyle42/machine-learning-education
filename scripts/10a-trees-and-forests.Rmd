@@ -1,0 +1,50 @@
+---
+title: "In-Class Work, Trees and Forests"
+author: "Will Doyle"
+date: "2025-02-13"
+output: html_document
+---
+
+## Instructions:
+### Step 1: Data Preparation
+
+Load the Open University dataset, focusing only on students who passed the course (i.e., remove any students who withdrew or failed).
+
+
+### Step 2: Exploratory Data Analysis
+
+Perform an initial exploratory analysis:
+
+Create bivariate displays (e.g., bar chart or table) to examine the relationship between a predictor and the distinction status.
+
+Summarize your findings and hypothesize which factors may be the most important.
+
+Step 3: Build a Classification Tree
+
+Build a simple (4-5 variable) classification tree to predict distinction status.
+
+Visualize the tree and interpret how it splits the data.
+
+Evaluate the model's performance using appropriate metrics (accuracy, precision, recall, F1-score).
+
+Build out a fully-specified decision tree and tune the hyperparameters. 
+
+Evaluate your decision tree against the testing data and provide the roc_auc.
+
+
+Step 4: Build a Random Forest Model
+
+Build a random forest using the full dataset
+
+Build aa randome forest model and tune the hyperparameters `mtry` and `min_n`  using cross-validation. Use a tree depth of just 25 trees for now. 
+
+Identify the most important features (predictors) in the random forest.
+
+
+## Step 5: Model Comparison and Interpretation
+
+Compare the performance of the classification tree and the random forest.
+
+Discuss which model is more effective for predicting distinction status and why.
+
+Reflect on the limitations of your analysis and suggest ways to improve it.
