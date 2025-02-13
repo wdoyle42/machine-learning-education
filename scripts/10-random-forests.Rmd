@@ -28,8 +28,6 @@ ou_test<-testing(ou_split)
 ```
 
 
-
-
 ## Formula and Recipe, same as last time
 
 ```{r}

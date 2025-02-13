@@ -8,18 +8,63 @@ output: html_document
 ## Instructions:
 ### Step 1: Data Preparation
 
-Load the Open University dataset, focusing only on students who passed the course (i.e., remove any students who withdrew or failed).
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(finetune)
+library(janitor)
+```
+
+
+Load the Open University dataset V2 (oulad2.csv)-- the variable result will now be just distinction (passed with distinction) vs. other (all other types of passing the course). 
+
+
+```{r}
+ou<-read_csv("oulad2.csv")%>%
+  mutate(result=fct_relevel(as_factor(result),c("distinction","other")))%>%
+  select(-final_result)
+```
+
+
+```{r}
+ou_split<-initial_split(ou)
+
+ou_train<-training(ou_split)
+
+ou_test<-testing(ou_split)
+```
 
 
 ### Step 2: Exploratory Data Analysis
 
 Perform an initial exploratory analysis:
 
+```{r}
+ou_train%>%
+  group_by(result)%>%
+  summarize(proportion = n() / nrow(ou_train))
+```
+
+
 Create bivariate displays (e.g., bar chart or table) to examine the relationship between a predictor and the distinction status.
+
+```{r}
+ou_train%>%
+summarize(fivenum(resource))
+
+ou_train%>%
+  mutate(resource_q=cut_number(resource,n=5))%>%
+  group_by(resource_q)%>%
+  summarize(
+    total = n(),  # Total number in each group
+    distinct = sum(result == "distinction", na.rm = TRUE),
+    proportion_distinct = distinct / total)
+```
+
 
 Summarize your findings and hypothesize which factors may be the most important.
 
-Step 3: Build a Classification Tree
+## Step 3: Build a Classification Tree
 
 Build a simple (4-5 variable) classification tree to predict distinction status.
 
@@ -36,9 +81,97 @@ Step 4: Build a Random Forest Model
 
 Build a random forest using the full dataset
 
-Build aa randome forest model and tune the hyperparameters `mtry` and `min_n`  using cross-validation. Use a tree depth of just 25 trees for now. 
+Build aa random forest model and tune the hyperparameters `mtry` and `min_n`  using cross-validation. Use a tree depth of just 25 trees for now. 
+
+
+```{r}
+rf_formula<-as.formula("result~.")
+```
+
+
+```{r}
+ou_rec<-recipe(rf_formula,ou_train)%>%
+  update_role(result,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .05)%>%
+  step_unknown(all_nominal_predictors())%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_zv(all_predictors())
+```
+
+
 
 Identify the most important features (predictors) in the random forest.
+
+
+```{r}
+rf_spec <- rand_forest(
+  mtry = tune(),
+  trees = 25, 
+  min_n = tune()
+) %>%
+  set_mode("classification") %>%
+  set_engine("ranger")
+```
+
+```{r}
+ou_grid<-grid_regular(mtry(range = c(10, 20)), ## Should be wider range
+  min_n(range = c(12, 17)), ## Should be wider range
+  levels = 3)
+```
+
+
+```{r}
+ou_wf <- workflow() %>%
+  add_recipe(ou_rec) %>%
+  add_model(rf_spec)
+```
+
+```{r}
+ou_rs<-ou%>%vfold_cv()
+```
+
+## Fit Model
+
+```{r}
+fit_model<-TRUE
+
+if(fit_model){
+rf_tune_res <- tune_grid(
+  ou_wf,
+  grid=ou_grid,
+  resamples = ou_rs,
+)
+save(rf_tune_res,file="rf_tune_res_dist.Rdata")
+} else{
+  load("rf_tune_res_dist.Rdata")
+}
+```
+
+```{r}
+rf_tune_res%>%collect_metrics()
+```
+
+```{r}
+best_auc <- select_best(rf_tune_res,metric = "roc_auc")
+
+final_rf <- finalize_model(
+  rf_spec,
+  best_auc
+)
+```
+
+```{r}
+
+final_wf <- workflow() %>%
+  add_recipe(ou_rec) %>%
+  add_model(final_rf)
+
+final_res <- final_wf %>%
+  last_fit(ou_split)
+
+final_res%>%collect_metrics()
+```
+
 
 
 ## Step 5: Model Comparison and Interpretation
