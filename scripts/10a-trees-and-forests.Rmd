@@ -53,6 +53,10 @@ ou_train%>%
 summarize(fivenum(resource))
 
 ou_train%>%
+  ggplot(aes(x=resource))+
+  geom_density()
+
+ou_train%>%
   mutate(resource_q=cut_number(resource,n=5))%>%
   group_by(resource_q)%>%
   summarize(

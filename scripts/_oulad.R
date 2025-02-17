@@ -68,3 +68,27 @@ ou<-ou%>%
   mutate(across(where(is.character), ~na_if(., "?")))
 
 write_csv(ou,file="oulad2.csv")
+
+
+## Third Version, withdrawn or not
+
+ou<-si%>%
+  mutate(result=fct_collapse(as_factor(final_result),
+                             withdrawn="Withdrawn",
+                             other_level="other"))
+
+
+## One variable per sum clicks per activity
+ou<-ou%>%pivot_wider(names_from=activity_type,values_from = clicks)
+
+## Messed up level shhhhhh
+ou<-ou%>%select(-("NA"))
+
+## q marks=NA
+ou<-ou%>%
+  mutate(across(where(is.character), ~na_if(., "?")))
+
+write_csv(ou,file="oulad3.csv")
+
+
+
