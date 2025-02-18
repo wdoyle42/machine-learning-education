@@ -1,0 +1,154 @@
+---
+title: "Xgboost"
+author: "Will Doyle"
+date: "2025-02-18"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(xgboost)
+library(vip)
+```
+
+
+
+
+```{r}
+ou<-read_csv("oulad.csv")%>%
+  mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%
+  select(-final_result)
+```
+
+```{r}
+ou_split<-initial_split(ou)
+
+ou_train<-training(ou_split)
+
+ou_test<-testing(ou_split)
+```
+
+
+## Formula and Recipe, same as last time
+
+```{r}
+rf_formula<-as.formula("result~.")
+```
+
+
+```{r}
+ou_rec<-recipe(rf_formula,ou_train)%>%
+  update_role(result,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .05)%>%
+  step_unknown(all_nominal_predictors())%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_zv(all_predictors())
+```
+
+
+
+
+## XGboost Specification
+
+```{r}
+xgb_spec <- boost_tree(
+  trees = 100,
+  tree_depth = tune(), min_n = tune(),
+  loss_reduction = tune(),                     ## first three: model complexity
+  sample_size = tune(), mtry = tune(),         ## randomness
+  learn_rate = tune()                          ## step size
+) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+```
+
+```{r}
+xgb_grid <- grid_latin_hypercube(
+  tree_depth(),
+  min_n(),
+  loss_reduction(),
+  sample_size = sample_prop(),
+  finalize(mtry(), ou_train),
+  learn_rate(),
+  size = 30
+)
+```
+
+
+```{r}
+ou_wf <- workflow() %>%
+  add_recipe(ou_rec) %>%
+  add_model(xgb_spec)
+```
+
+
+
+```{r}
+ou_rs<-ou%>%vfold_cv()
+```
+
+## Fit Model
+
+```{r}
+fit_model<-TRUE
+
+if(fit_model){
+xg_tune_res <- tune_grid(
+  ou_wf,
+  grid=xgb_grid,
+  resamples = ou_rs,
+)
+save(xg_tune_res,file="xg_tune_res.Rdata")
+} else{
+  load("xg_tune_res.Rdata")
+}
+```
+
+```{r}
+xg_tune_res %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  select(mean, mtry:sample_size) %>%
+  pivot_longer(mtry:sample_size,
+               values_to = "value",
+               names_to = "parameter"
+  ) %>%
+  ggplot(aes(value, mean, color = parameter)) +
+  geom_point(alpha = 0.8, show.legend = FALSE) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(x = NULL, y = "AUC")
+```
+
+```{r}
+show_best(xg_tune_res,metric="roc_auc")
+```
+
+```{r}
+best_auc <- select_best(xg_tune_res,metric =  "roc_auc")
+```
+
+```{r}
+final_xgb <- finalize_workflow(
+  ou_wf,
+  best_auc
+)
+```
+
+```{r}
+final_xgb %>%
+  fit(data = ou_train) %>%
+  extract_fit_parsnip() %>%
+  vip(geom = "point")
+```
+
+```{r}
+final_res <- last_fit(final_xgb, ou_split)
+
+collect_metrics(final_res)
+```
+
+
+
