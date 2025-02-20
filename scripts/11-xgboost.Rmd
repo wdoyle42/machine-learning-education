@@ -74,8 +74,6 @@ library(xgboost)
 library(vip)
 library(rpart)
 library(rpart.plot)
-library(grid)
-library(gridExtra)
 ```
 
 ```{r}
@@ -324,16 +322,20 @@ collect_metrics(final_res)
 
 More intuitive explanation of the gradient descent step, how it relates to the Hessian. 
 
+Below, we're going to build a stochastic gradient descent model by hand. This isn't a full xgboost, but gives you a sense of how the procedure works. To keep things simple, we're going to work with a sample of just 100 units from the overall dataset. 
+
 ```{r}
 
-# Sample 20 units from dataset `ou`
-
-
+# Sample 100 units from dataset `ou`
 sample_data <- ou%>%
   sample_n(100)%>%
   mutate(y=ifelse(result=="passed",1,0))%>%
-  select(-result,-id_student,-region,-imd_band,-highest_education,-age_band,-code_module)
+  select(where(is.numeric))
+```
 
+We'll next define a few parameters, including the learning rate, the sampling rate, and the number of features to try. 
+
+```{r}
 # Define learning rate
 eta <- 0.1
 
@@ -347,12 +349,39 @@ num_iterations <- 100
 # Number of features to randomly select in each iteration
 num_features <- 5
 
+```
+
+The procedure starts by just guessing the mean as the prediction.
+
+```{r}
 # Initialize predictions as the mean of y
 sample_data$prediction <- mean(sample_data$y)
 
+ # Compute residuals (errors)
+  sample_data$residuals <- sample_data$y - sample_data$prediction
+```
+
+
+I'm going to store the results as I go
+```{r}
 # Store predictions over iterations for visualization
 iteration_results <- data.frame(ID = 1:nrow(sample_data), y_true = sample_data$y)
 
+  
+```
+
+Below is the boosting loop. It works like this:
+
+1. Sample 80% of the data
+2. Randomly select 5 features
+3. Calculate the residuals from the existing predictions
+4. Run a tree using the sampled data and 5 randomly selected features
+5. Use that tree to predict the probability of the outcome in the FULL dataset
+6. Use the prediction times the learning rate eta as the prediction for that iteration
+
+6. Iterate over steps 1-
+
+```{r}
 # Boosting loop
 for (i in 1:num_iterations) {
   cat("\nIteration:", i, "\n")
@@ -364,9 +393,7 @@ for (i in 1:num_iterations) {
   feature_cols <- setdiff(names(sampled_data), c("y", "prediction"))
   selected_features <- sample(feature_cols, num_features)
   
-  # Compute residuals (errors)
-  sampled_data$residuals <- sampled_data$y - sampled_data$prediction
-  
+ 
   # Fit a regression tree using only selected features
   formula <- as.formula(paste("residuals ~", paste(selected_features, collapse = " + ")))
   
@@ -400,14 +427,15 @@ plot_data <- iteration_results %>%
   pivot_longer(cols = starts_with("Iteration"), names_to = "Iteration", values_to = "Prediction")
 
 # Final plot showing prediction convergence
-ggplot(plot_data, aes(x = ID, y = Prediction, color = Iteration)) +
-  geom_point(size = 2) +
+ggplot(plot_data, aes(x = ID, y = Prediction)) +
+  geom_point(size = .1,alpha=.3) +
   geom_line(aes(group = Iteration), alpha = 0.7) +
   geom_point(aes(y = y_true), shape = 4, color = "black", size = 3) +  # True values
   labs(title = "Prediction Convergence Over Iterations",
        x = "Observation ID",
        y = "Predicted Value") +
-  theme_minimal()
+  theme_minimal()+
+  theme(legend.position="none")
 
 
 
