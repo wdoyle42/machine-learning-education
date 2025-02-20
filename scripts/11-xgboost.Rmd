@@ -72,6 +72,10 @@ library(tidymodels)
 library(janitor)
 library(xgboost)
 library(vip)
+library(rpart)
+library(rpart.plot)
+library(grid)
+library(gridExtra)
 ```
 
 ```{r}
@@ -110,14 +114,15 @@ ou_rec<-recipe(rf_formula,ou_train)%>%
 
 ## XGboost Specification
 
-From: 
+From: https://juliasilge.com/blog/xgboost-tune-volleyball/
+
 
 ```{r}
 xgb_spec <- boost_tree(
-  trees = 100,
+  trees = 100, 
   tree_depth = tune(), 
   min_n = tune(),
-  loss_reduction = tune(),                     ## first three: model complexity
+  loss_reduction = tune(), ## first three: model complexity
   sample_size = tune(), 
   mtry = tune(),         ## randomness
   learn_rate = tune() ## step size
@@ -204,7 +209,7 @@ xgb_spec <- boost_tree(
 
 
 ```{r}
-xgb_grid <- grid_latin_hypercube(
+xgb_grid <- grid_space_filling(
   tree_depth(),
   min_n(),
   loss_reduction(), 
@@ -273,6 +278,35 @@ final_xgb <- finalize_workflow(
 )
 ```
 
+## Variable importance
+How xgb.importance() Computes and Scales Feature Importance
+
+Feature importance in XGBoost is derived from individual trees and aggregated across all boosting rounds. The scores are then normalized so that they sum to 1 (or 100%) for easier interpretation.
+
+**1. Raw Computation (Before Scaling)**
+
+For each feature, XGBoost tracks:
+
+Gain: The total improvement in loss function when a feature is used in a split.
+
+Cover: The total number of samples impacted by splits on a feature.
+
+Frequency: The number of times a feature is used for splitting.
+
+At first, these values are raw counts or sums.
+
+**2. Normalization (Scaling)**
+
+By default, xgb.importance() scales the importance scores so they sum to 1 (or 100%):
+
+Normalized Importance = (Raw Importance for Feature i) / (Sum of Raw Importance for All Features)
+
+Thus, after scaling:
+
+The sum of all feature importance values is 1 (or 100%).
+
+Each feature's importance is expressed as a relative proportion.
+
 ```{r}
 final_xgb %>%
   fit(data = ou_train) %>%
@@ -288,5 +322,108 @@ final_res <- last_fit(final_xgb, ou_split)
 collect_metrics(final_res)
 ```
 
+More intuitive explanation of the gradient descent step, how it relates to the Hessian. 
 
+```{r}
+
+# Sample 20 units from dataset `ou`
+
+
+sample_data <- ou%>%
+  sample_n(100)%>%
+  mutate(y=ifelse(result=="passed",1,0))%>%
+  select(-result,-id_student,-region,-imd_band,-highest_education,-age_band,-code_module)
+
+# Define learning rate
+eta <- 0.1
+
+# Define sampling rate
+
+sampling_rate<-.8
+
+# Define number of boosting iterations
+num_iterations <- 100
+
+# Number of features to randomly select in each iteration
+num_features <- 5
+
+# Initialize predictions as the mean of y
+sample_data$prediction <- mean(sample_data$y)
+
+# Store predictions over iterations for visualization
+iteration_results <- data.frame(ID = 1:nrow(sample_data), y_true = sample_data$y)
+
+# Boosting loop
+for (i in 1:num_iterations) {
+  cat("\nIteration:", i, "\n")
+  
+  # Sample 80% of data
+    sampled_data <- sample_frac(sample_data,sampling_rate)
+  
+  # Select a random subset of features (excluding target and prediction columns)
+  feature_cols <- setdiff(names(sampled_data), c("y", "prediction"))
+  selected_features <- sample(feature_cols, num_features)
+  
+  # Compute residuals (errors)
+  sampled_data$residuals <- sampled_data$y - sampled_data$prediction
+  
+  # Fit a regression tree using only selected features
+  formula <- as.formula(paste("residuals ~", paste(selected_features, collapse = " + ")))
+  
+  tree <- rpart(formula, data = sampled_data, method = "anova")
+  
+  
+#dev.new()
+  
+#title=paste("Results for iteration",i)
+#rpart.plot(tree,main=title)
+
+  # Get tree predictions (fitted residuals) for the full dataset (sample_data)
+  sample_data$tree_output <- predict(tree, sample_data)
+  
+  ## What are predictions?
+  
+
+  # Update predictions using learning rate
+  sample_data$prediction <- sample_data$prediction + eta * sample_data$tree_output
+  
+  # Compute new residuals
+  sample_data$residuals <- sample_data$y - sample_data$prediction
+  
+  # Store predictions for visualization
+  iteration_results[[paste0("Iteration_", i)]] <- sample_data$prediction
+}
+
+
+# Convert data for ggplot visualization
+plot_data <- iteration_results %>%
+  pivot_longer(cols = starts_with("Iteration"), names_to = "Iteration", values_to = "Prediction")
+
+# Final plot showing prediction convergence
+ggplot(plot_data, aes(x = ID, y = Prediction, color = Iteration)) +
+  geom_point(size = 2) +
+  geom_line(aes(group = Iteration), alpha = 0.7) +
+  geom_point(aes(y = y_true), shape = 4, color = "black", size = 3) +  # True values
+  labs(title = "Prediction Convergence Over Iterations",
+       x = "Observation ID",
+       y = "Predicted Value") +
+  theme_minimal()
+
+
+
+```
+
+```{r}
+results_tbl <- sample_data %>%
+    mutate(y = as.factor(y)) %>%
+    select(y, prediction)
+  
+  # Compute ROC AUC using yardstick
+  auc_score <- roc_auc(results_tbl, truth = y,prediction,event_level = "second")
+```
+
+
+```{r}
+graphics.off()
+```
 
