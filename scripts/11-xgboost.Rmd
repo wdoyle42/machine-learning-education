@@ -330,7 +330,7 @@ Below, we're going to build a stochastic gradient descent model by hand. This is
 sample_data <- ou%>%
   sample_n(100)%>%
   mutate(y=ifelse(result=="passed",1,0))%>%
-  select(where(is.numeric),"id_student")
+  select(where(is.numeric),-id_student)
 ```
 
 We'll next define a few parameters, including the learning rate, the sampling rate, and the number of features to try. 
