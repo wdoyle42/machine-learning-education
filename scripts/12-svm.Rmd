@@ -5,7 +5,7 @@ date: "2025-02-25"
 output: github_document
 ---
  
-### **Support Vector Machines (SVM): An Overview**
+### **Support Vector Machines (SVM)**
 
 #### **1. Introduction**
 Support Vector Machines (SVMs) are a powerful class of supervised learning models used for classification and regression tasks. They are particularly effective in high-dimensional spaces. SVMs work by finding the optimal hyperplane that best separates classes in a dataset.
@@ -71,9 +71,9 @@ SVM ignores **non-critical points** in training, which makes it robust to outlie
 ---
 
 ### **5. Nonlinear SVM: The Kernel Trick**
-Many real-world datasets are **not linearly separable**. SVMs handle this using the **kernel trick**, which maps the input space into a **higher-dimensional space** where the data is separable.
+Many real-world datasets are not linearly separable. SVMs handle this using the kernel trick, which maps the input space into a higher-dimensional space where the data is separable.
 
-Common **kernel functions**:
+**Common kernel functions**:
 - **Linear kernel**:
   \[
   K(x_i, x_j) = x_i \cdot x_j
@@ -90,15 +90,15 @@ Common **kernel functions**:
   \[
   K(x_i, x_j) = \exp\left(-\gamma ||x_i - x_j||^2 \right)
   \]
-  Handles complex decision boundaries by mapping data into an **infinite-dimensional space**.
+  Handles complex decision boundaries by mapping data into an n-dimensional space.
 
 
 RBF is flexible enough that it's used unless the function is kind of obviously linear. 
 
 ### **7. Hyperparameters in SVM**
 - **Cost parameter \( C \)**:
-  - **High \( C \)** → Small margin, fewer misclassifications (risk of overfitting).
-  - **Low \( C \)** → Large margin, allows some misclassifications (better generalization).
+  - **High \( C \)** : Small margin, fewer misclassifications (risk of overfitting).
+  - **Low \( C \)** : Large margin, allows some misclassifications (better generalization).
   
 - **Kernel-specific parameters**:
   - **RBF kernel (\(\gamma\))**:
