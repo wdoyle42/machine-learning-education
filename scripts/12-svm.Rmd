@@ -161,12 +161,15 @@ ggplot(df,aes(x=x,y=y,color=included))+
 ```{r}
 
 # Generate synthetic data where P(y=1) follows a sigmoid function of x
-set.seed(42)
+
 x <- seq(-3, 3, length.out = 100)  # Feature
 beta <- 3  # Controls steepness of sigmoid
 prob_y1 <- 1 / (1 + exp(-beta * x))  # Sigmoid function
 y <- rbinom(100, 1, prob_y1)  # Sample binary outcomes with probabilities
 data <- data.frame(x = x, y = as.factor(y))  # Convert y to factor for classification
+
+data%>%
+  ggplot(aes(x=x,y=y))+geom_point()
 
 data%>%
   ggplot(aes(x=x,y=y))+geom_point()
@@ -240,7 +243,6 @@ svm_model<-svm_rbf(
   cost=tune(),
   rbf_sigma=tune())%>%
   set_engine("kernlab")
-  
 ```
 ```{r}
 ou_rs <- mc_cv(ou_train, times=25)

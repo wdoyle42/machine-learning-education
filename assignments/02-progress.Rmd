@@ -1,0 +1,11 @@
+---
+title: "02-Progress Report"
+author: "Will Doyle"
+date: "2025-02-25"
+output: html_document
+---
+
+For this progress report I want you to begin describing patterns in your dependent variable.
+
+1. Univariate analysis: provide appropriate measures of central tendency and variability for your dependent variable. If your dv is continuous, provide graphics showing the distribution of your variable.
+2. Bivariate analysis: provide the conditional mean of your dependent variable as function of at least three and no more than five of your independent variables. Provide the results in a table or graphic. Remember to use the group_by--> summarize approach, where group_by is based on a categorical or discretized independent variable. 
