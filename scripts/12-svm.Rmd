@@ -1,0 +1,311 @@
+---
+title: "Support Vector Machines"
+author: "Will Doyle"
+date: "2025-02-25"
+output: github_document
+---
+ 
+### **Support Vector Machines (SVM): An Overview**
+
+#### **1. Introduction**
+Support Vector Machines (SVMs) are a powerful class of supervised learning models used for classification and regression tasks. They are particularly effective in high-dimensional spaces. SVMs work by finding the optimal hyperplane that best separates classes in a dataset.
+
+---
+
+### **2. Key Concept: The Optimal Hyperplane**
+For a **binary classification** problem, SVM aims to find the **decision boundary** (hyperplane) that maximizes the margin between two classes.
+
+- The **hyperplane** is defined as:
+  \[
+  w \cdot x + b = 0
+  \]
+  where:
+  - \( w \) is the **weight vector** (direction of separation),
+  - \( x \) represents the **feature values**,
+  - \( b \) is the **bias term** (intercept).
+
+- The margin is the distance between the hyperplane and the nearest data points (support vectors).
+- The larger the margin, the better the generalization of the model.
+
+#### **Finding the Best Hyperplane**
+SVM optimizes the margin by solving:
+\[
+\min_{w, b} \quad \frac{1}{2} ||w||^2
+\]
+subject to the constraint:
+\[
+y_i (w \cdot x_i + b) \geq 1, \quad \forall i
+\]
+where \( y_i \) is the class label (\(+1\) or \(-1\)).
+
+---
+
+### **3. Support Vectors: The Most Informative Points**
+Support vectors are the **critical data points** that define the margin. These are:
+- **Points on the margin boundaries**.
+- **Misclassified points (in soft-margin SVMs)**.
+
+SVM ignores **non-critical points** in training, which makes it robust to outliers and high-dimensional data. This last point means that it will many times reduce the effective sample used for estimation by quite a bit. 
+
+---
+
+### **4. Hard-Margin vs. Soft-Margin SVM**
+#### **Hard-Margin SVM (No Overlapping Classes)**
+- Assumes that data is **perfectly separable**.
+- The margin is strictly enforced, allowing **no misclassifications**.
+- Solves:
+  \[
+  \min_{w, b} \quad \frac{1}{2} ||w||^2
+  \]
+  subject to \( y_i (w \cdot x_i + b) \geq 1 \).
+
+#### **Soft-Margin SVM (Overlapping Classes)**
+- Allows for some misclassifications using **slack variables** \( \xi_i \).
+- Trades off **margin width** and **classification errors** via **cost parameter \( C \)**.
+- Solves:
+  \[
+  \min_{w, b} \quad \frac{1}{2} ||w||^2 + C \sum_{i=1}^{N} \xi_i
+  \]
+  where \( \xi_i \geq 0 \) allows points to be inside the margin or misclassified.
+
+---
+
+### **5. Nonlinear SVM: The Kernel Trick**
+Many real-world datasets are **not linearly separable**. SVMs handle this using the **kernel trick**, which maps the input space into a **higher-dimensional space** where the data is separable.
+
+Common **kernel functions**:
+- **Linear kernel**:
+  \[
+  K(x_i, x_j) = x_i \cdot x_j
+  \]
+  Used for linearly separable data.
+
+- **Polynomial kernel**:
+  \[
+  K(x_i, x_j) = (x_i \cdot x_j + c)^d
+  \]
+  Used for curved decision boundaries.
+
+- **Radial Basis Function (RBF) kernel**:
+  \[
+  K(x_i, x_j) = \exp\left(-\gamma ||x_i - x_j||^2 \right)
+  \]
+  Handles complex decision boundaries by mapping data into an **infinite-dimensional space**.
+
+
+RBF is flexible enough that it's used unless the function is kind of obviously linear. 
+
+### **7. Hyperparameters in SVM**
+- **Cost parameter \( C \)**:
+  - **High \( C \)** → Small margin, fewer misclassifications (risk of overfitting).
+  - **Low \( C \)** → Large margin, allows some misclassifications (better generalization).
+  
+- **Kernel-specific parameters**:
+  - **RBF kernel (\(\gamma\))**:
+    - **High \(\gamma\)** → More flexible decision boundary (risk of overfitting).
+    - **Low \(\gamma\)** → Simpler decision boundary (risk of underfitting).
+- **Polynomial Kernel**
+  -**Value of the polynomial expansion
+---
+
+## Example 1: Linear Response function
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(e1071)
+library(kernlab)
+```
+
+```{r}
+
+# Generate synthetic data
+
+x <- seq(-3, 3, length.out = 100)   # Single feature
+y <- ifelse(x + rnorm(100, sd=1) > 0, 1, 0)  # Binary target with some noise
+data <- data.frame(x = x, y = as.factor(y))  # Convert y to a factor for classification
+
+# Train SVM model
+svm_model <- svm(y ~ x, data = data, kernel = "linear", cost = 1,scale=FALSE)
+
+# Get the decision boundary
+w <- t(svm_model$coefs) %*% svm_model$SV  # Compute weight
+b <- -svm_model$rho  # Intercept
+
+# Compute the decision boundary
+decision_boundary_x <- -b / w  # Since w*x + b = 0, solve for x
+
+# Predict using the trained model
+data$predicted <- predict(svm_model, newdata = data)
+
+# Visualize the decision boundary
+ggplot(data, aes(x = x, y = as.numeric(y), color = predicted)) +
+  geom_point(size = 3) +
+  geom_vline(xintercept = decision_boundary_x, linetype = "dashed", color = "black") +
+  labs(title = "SVM Classification with One Feature",
+       x = "Feature x", y = "Class (y)") +
+  theme_minimal()
+
+## Another look
+included<-(x%in%svm_model$SV)
+
+df<-data.frame(x,y,included)
+
+ggplot(df,aes(x=x,y=y,color=included))+
+  geom_point()
+```
+
+
+## Example 2: Non-Linear Response function
+
+```{r}
+
+# Generate synthetic data where P(y=1) follows a sigmoid function of x
+set.seed(42)
+x <- seq(-3, 3, length.out = 100)  # Feature
+beta <- 3  # Controls steepness of sigmoid
+prob_y1 <- 1 / (1 + exp(-beta * x))  # Sigmoid function
+y <- rbinom(100, 1, prob_y1)  # Sample binary outcomes with probabilities
+data <- data.frame(x = x, y = as.factor(y))  # Convert y to factor for classification
+
+data%>%
+  ggplot(aes(x=x,y=y))+geom_point()
+
+# Train SVM with an RBF kernel
+svm_model <- svm(y ~ x, data = data, kernel = "radial", cost = 1, gamma = 1)
+
+# Extract Support Vectors
+support_vectors_scaled <- svm_model$SV  # These are in scaled form
+
+# Reverse scaling to get original x values
+scaled_x <- scale(data$x)  # Get scaling parameters
+original_support_vectors <- support_vectors_scaled * attr(scaled_x, "scaled:scale") + attr(scaled_x, "scaled:center")
+
+# Predict decision values and apply sigmoid transformation
+decision_values <- attributes(predict(svm_model, newdata = data, decision.values = TRUE))$decision.values
+sigmoid_response <- 1 / (1 + exp(-decision_values))  # Approximate probability output
+
+# Add predictions to the dataset
+data$probability <- sigmoid_response
+data$predicted <- predict(svm_model, newdata = data)
+
+# Visualization: Decision Boundary & Support Vectors
+ggplot(data, aes(x = x, y = as.numeric(y), color = probability)) +
+  geom_point(size = 3) +
+  geom_vline(xintercept = original_support_vectors, linetype = "dashed", color = "red") + 
+  scale_color_gradient(low = "blue", high = "red") + 
+  labs(title = "SVM with RBF Kernel on Sigmoid-Generated Data",
+       x = "Feature x", y = "Class (y)") +
+  theme_minimal()
+```
+
+## Application to Open University Data
+
+```{r}
+
+ou<-read_csv("oulad.csv")%>%
+  mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%
+  select(-final_result,-repeatactivity)
+
+```
+
+```{r}
+
+ou_split<-initial_split(ou)
+
+ou_train<-training(ou_split)
+
+ou_test<-testing(ou_split)
+```
+
+```{r}
+rf_formula<-as.formula("result~.")
+```
+
+```{r}
+ou_rec<-recipe(rf_formula,ou_train)%>%
+  update_role(id_student,new_role="id")%>%
+  update_role(result,new_role = "outcome")%>%
+  step_unknown(all_nominal_predictors())%>%
+  step_other(all_nominal_predictors(),threshold = .05)%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())%>%
+  step_impute_mean(all_predictors())
+```
+
+```{r}
+svm_model<-svm_rbf(
+  mode="classification",
+  cost=tune(),
+  rbf_sigma=tune())%>%
+  set_engine("kernlab")
+  
+```
+```{r}
+ou_rs <- mc_cv(ou_train, times=25)
+```
+```{r}
+ou_grid<-grid_space_filling(extract_parameter_set_dials(svm_model),size=9)
+```
+
+```{r}
+ou_wf <- workflow() %>%
+  add_model(svm_model) %>%
+  add_recipe(ou_rec)
+```
+
+```{r}
+fit_svm=TRUE
+
+if(fit_svm){
+ou_tune_results <- tune_grid(
+  ou_wf,
+  resamples = ou_rs,
+  grid = ou_grid,
+  metrics = metric_set(accuracy, roc_auc)
+)
+save(ou_tune_results,"ou_tune_results.Rdata")
+} else {
+  load("ou_tune_results.Rdata")
+}
+```
+
+```{r}
+autoplot(ou_tune_results)
+```
+
+```{r}
+best_params <- select_best(ou_tune_results, "roc_auc")
+print(best_params)
+```
+
+```{r}
+
+```
+
+
+```{r}
+final_ou_wf <- finalize_workflow(ou_wf, best_params)
+```
+
+```{r}
+final_ou_model <- fit(final_ou_wf, data = ou_train)
+```
+
+```{r}
+# Evaluate on test set
+svm_predictions <- predict(final_ou_model, ou_test, type = "prob") %>%
+  bind_cols(ou_test)
+
+# Compute final accuracy and ROC AUC
+final_metrics <- svm_predictions %>%
+  roc_auc(truth = y, estimate = .pred_1) %>%
+  bind_rows(
+    svm_predictions %>% accuracy(truth = y, estimate = .pred_class)
+  )
+
+# Output results
+print(final_metrics)
+```
+

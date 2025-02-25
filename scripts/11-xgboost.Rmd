@@ -100,6 +100,7 @@ rf_formula<-as.formula("result~.")
 
 ```{r}
 ou_rec<-recipe(rf_formula,ou_train)%>%
+  update_role(id_student,new_role="id")%>%
   update_role(result,new_role = "outcome")%>%
   step_other(all_nominal_predictors(),threshold = .05)%>%
   step_unknown(all_nominal_predictors())%>%
@@ -383,6 +384,8 @@ Below is the boosting loop. It works like this:
 
 ```{r}
 # Boosting loop
+num_iterations=100
+
 for (i in 1:num_iterations) {
   cat("\nIteration:", i, "\n")
   
@@ -403,12 +406,10 @@ for (i in 1:num_iterations) {
 #dev.new()
   
 #title=paste("Results for iteration",i)
-#rpart.plot(tree,main=title)
+rpart.plot(tree,main=title)
 
   # Get tree predictions (fitted residuals) for the full dataset (sample_data)
   sample_data$tree_output <- predict(tree, sample_data)
-  
-  ## What are predictions?
   
 
   # Update predictions using learning rate
@@ -427,7 +428,7 @@ plot_data <- iteration_results %>%
   pivot_longer(cols = starts_with("Iteration"), names_to = "Iteration", values_to = "Prediction")
 
 # Final plot showing prediction convergence
-ggplot(plot_data, aes(x = ID, y = Prediction)) +
+ggplot(plot_data, aes(x = ID, y = Prediction,color=Iteration)) +
   geom_point(size = .1,alpha=.3) +
   geom_line(aes(group = Iteration), alpha = 0.7) +
   geom_point(aes(y = y_true), shape = 4, color = "black", size = 3) +  # True values
