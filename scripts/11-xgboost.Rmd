@@ -405,7 +405,7 @@ for (i in 1:num_iterations) {
   
 #dev.new()
   
-#title=paste("Results for iteration",i)
+title=paste("Results for iteration",i)
 rpart.plot(tree,main=title)
 
   # Get tree predictions (fitted residuals) for the full dataset (sample_data)

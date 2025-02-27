@@ -245,10 +245,10 @@ svm_model<-svm_rbf(
   set_engine("kernlab")
 ```
 ```{r}
-ou_rs <- mc_cv(ou_train, times=25)
+ou_rs <- mc_cv(ou_train, times=10)
 ```
 ```{r}
-ou_grid<-grid_space_filling(extract_parameter_set_dials(svm_model),size=9)
+ou_grid<-grid_space_filling(extract_parameter_set_dials(svm_model),size=4)
 ```
 
 ```{r}
@@ -261,6 +261,7 @@ ou_wf <- workflow() %>%
 fit_svm=TRUE
 
 if(fit_svm){
+  
 ou_tune_results <- tune_grid(
   ou_wf,
   resamples = ou_rs,
@@ -282,10 +283,6 @@ best_params <- select_best(ou_tune_results, "roc_auc")
 print(best_params)
 ```
 
-```{r}
-
-```
-
 
 ```{r}
 final_ou_wf <- finalize_workflow(ou_wf, best_params)
@@ -297,17 +294,156 @@ final_ou_model <- fit(final_ou_wf, data = ou_train)
 
 ```{r}
 # Evaluate on test set
-svm_predictions <- predict(final_ou_model, ou_test, type = "prob") %>%
-  bind_cols(ou_test)
+ou_test<-out_test%>%augment(final_ou_model)
 
 # Compute final accuracy and ROC AUC
-final_metrics <- svm_predictions %>%
-  roc_auc(truth = y, estimate = .pred_1) %>%
+final_metrics <- ou_test %>%
+  roc_auc(truth = result, estimate = .pred_1) %>%
   bind_rows(
-    svm_predictions %>% accuracy(truth = y, estimate = .pred_class)
+    ou_test %>% accuracy(truth = result, estimate = .pred_class)
   )
 
 # Output results
 print(final_metrics)
+```
+
+## Functional Changes and the Kernel Trick
+```{r}
+
+# Generate 6 points - three from each class
+x1 <- matrix(c(1, 2, 1.5, 6, 7, 6.5), ncol = 1)  # Feature (1D)
+y  <- factor(c(-1, -1, -1, 1, 1, 1))  # Class labels
+
+df <- data.frame(x1, y)
+
+# Plot points
+ggplot(df, aes(x = x1, y = as.numeric(y), color = y)) +
+  geom_point(size = 4) +
+  labs(title = "Small Binary Classification Dataset", x = "Feature", y = "Class") +
+  theme_minimal()
+
+```
+
+```{r}
+# Train SVM with a linear kernel
+svm_linear <- svm(y ~ ., data = df, kernel = "linear", cost = 10)
+
+# Extract support vectors
+sv_linear_sv <- df[svm_linear$index, ]
+
+# Print support vectors
+print(sv_linear_sv)
+
+# Visualize support vectors
+ggplot(df, aes(x = x1, y = as.numeric(y), color = y)) +
+  geom_point(size = 4) +
+  geom_point(data = sv_linear_sv, aes(x = x1, y = as.numeric(y)), 
+             color = "black", shape = 1, size = 6, stroke = 2) +
+  labs(title = "Linear Kernel: Support Vectors Highlighted", x = "Feature", y = "Class") +
+  theme_minimal()
+```
+
+```{r}
+# Train SVM with a polynomial kernel (degree = 2)
+svm_poly <- svm(y ~ ., data = df, kernel = "polynomial", degree = 2, cost = 10)
+
+# Extract support vectors
+sv_poly_sv <- df[svm_poly$index, ]
+
+# Print support vectors
+print(sv_poly_sv)
+
+# Visualize support vectors
+ggplot(df, aes(x = x1, y = as.numeric(y), color = y)) +
+  geom_point(size = 4) +
+  geom_point(data = sv_poly_sv, aes(x = x1, y = as.numeric(y)), 
+             color = "black", shape = 1, size = 6, stroke = 2) +
+  labs(title = "Polynomial Kernel (Degree = 2): Support Vectors Highlighted", x = "Feature", y = "Class") +
+  theme_minimal()
+```
+
+```{r}
+# Define the RBF kernel function
+rbf_kernel <- function(x1, x2, gamma = 0.5) {
+  exp(-gamma * (x1 - x2)^2)
+}
+
+# Compute pairwise RBF kernel values
+gamma <- 0.5
+kernel_matrix <- outer(x1, x1, Vectorize(function(a, b) rbf_kernel(a, b, gamma)))
+
+# Display kernel matrix
+print(kernel_matrix)
+```
+
+```{r}
+# Train SVM with RBF kernel
+svm_model <- svm(y ~ ., data = df, kernel = "radial", gamma = 0.5, cost = 10)
+
+# Extract support vectors
+support_vectors <- df[svm_model$index, ]
+
+# Print support vectors
+print(support_vectors)
+
+# Visualize support vectors
+ggplot(df, aes(x = x1, y = as.numeric(y), color = y)) +
+  geom_point(size = 4) +
+  geom_point(data = support_vectors, aes(x = x1, y = as.numeric(y)), 
+             color = "black", shape = 1, size = 6, stroke = 2) +
+  labs(title = "Support Vectors Highlighted", x = "Feature", y = "Class") +
+  theme_minimal()
+```
+
+```{r}
+# Choose a test point to compare influence
+test_x <- 5
+
+# Compute kernel similarities with the test point
+influence_values <- sapply(x1, function(x) rbf_kernel(x, test_x, gamma))
+
+# Create dataframe for plotting
+influence_df <- data.frame(x1 = x1, influence = influence_values)
+
+# Plot influence of each point
+ggplot(influence_df, aes(x = x1, y = influence)) +
+  geom_point(size = 4, color = "blue") +
+  geom_line() +
+  labs(title = "RBF Kernel Influence on Test Point x=5",
+       x = "Training Points", y = "Kernel Similarity") +
+  theme_minimal()
+```
+
+```{r}
+
+# Define a test point
+test_x <- 5
+
+# Define polynomial kernel function
+poly_kernel <- function(x1, x2, degree = 2, c = 1) {
+  (x1 * x2 + c)^degree
+}
+
+# Compute kernel similarities for each approach
+gamma <- 0.5
+influence_df <- data.frame(
+  x1 = x1,
+  Linear = x1 * test_x,
+  Polynomial = sapply(x1, function(x) poly_kernel(x, test_x, degree = 2)),
+  RBF = sapply(x1, function(x) exp(-gamma * (x - test_x)^2))
+)
+
+# Reshape data for visualization
+
+influence_df_long <- influence_df%>%
+  pivot_longer(cols=c("Linear","Polynomial","RBF"))
+
+# Plot kernel influence
+ggplot(influence_df_long, aes(x = x1, y = value, color = name)) +
+  geom_point(size = 4) +
+  geom_line() +
+  labs(title = "Influence of Training Points (Different Kernels)",
+       x = "Training Points", y = "Kernel Similarity") +
+  theme_minimal()
 ```
 
