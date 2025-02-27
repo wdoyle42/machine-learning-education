@@ -208,7 +208,8 @@ ggplot(data, aes(x = x, y = as.numeric(y), color = probability)) +
 
 ou<-read_csv("oulad.csv")%>%
   mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%
-  select(-final_result,-repeatactivity)
+  select(-final_result,-repeatactivity)%>%
+  sample_n(10000)
 
 ```
 
@@ -261,6 +262,7 @@ ou_wf <- workflow() %>%
 fit_svm=TRUE
 
 if(fit_svm){
+  doParallel::registerDoParallel()
   
 ou_tune_results <- tune_grid(
   ou_wf,
@@ -268,7 +270,7 @@ ou_tune_results <- tune_grid(
   grid = ou_grid,
   metrics = metric_set(accuracy, roc_auc)
 )
-save(ou_tune_results,"ou_tune_results.Rdata")
+save(ou_tune_results,file="ou_tune_results.Rdata")
 } else {
   load("ou_tune_results.Rdata")
 }
@@ -279,7 +281,7 @@ autoplot(ou_tune_results)
 ```
 
 ```{r}
-best_params <- select_best(ou_tune_results, "roc_auc")
+best_params <- select_best(ou_tune_results, metric = "roc_auc")
 print(best_params)
 ```
 
@@ -294,11 +296,11 @@ final_ou_model <- fit(final_ou_wf, data = ou_train)
 
 ```{r}
 # Evaluate on test set
-ou_test<-out_test%>%augment(final_ou_model)
+ou_test<-final_ou_model%>%augment(ou_test)
 
 # Compute final accuracy and ROC AUC
 final_metrics <- ou_test %>%
-  roc_auc(truth = result, estimate = .pred_1) %>%
+  roc_auc(truth = result,.pred_passed) %>%
   bind_rows(
     ou_test %>% accuracy(truth = result, estimate = .pred_class)
   )
@@ -306,6 +308,7 @@ final_metrics <- ou_test %>%
 # Output results
 print(final_metrics)
 ```
+
 
 ## Functional Changes and the Kernel Trick
 ```{r}
@@ -395,6 +398,8 @@ ggplot(df, aes(x = x1, y = as.numeric(y), color = y)) +
   theme_minimal()
 ```
 
+
+
 ```{r}
 # Choose a test point to compare influence
 test_x <- 5
@@ -413,6 +418,80 @@ ggplot(influence_df, aes(x = x1, y = influence)) +
        x = "Training Points", y = "Kernel Similarity") +
   theme_minimal()
 ```
+
+### **How Similarity is Used to Predict Points in the Testing Dataset**
+
+In **Support Vector Machines (SVMs)**, the **kernel similarity** between a new test point and training points is crucial for making predictions. 
+
+---
+
+## **1. Prediction in a Linear SVM**
+In a **linear kernel**, the decision boundary is a straight line (or hyperplane in higher dimensions), and prediction is based on the **dot product**:
+
+\[
+f(x) = \sum_{i \in SV} \alpha_i y_i (x_i \cdot x) + b
+\]
+
+where:
+- \( x \) is the test point,
+- \( x_i \) are the **support vectors** (not all training points, only the critical ones),
+- \( y_i \) are the labels of support vectors (+1 or -1),
+- \( \alpha_i \) are learned coefficients (Lagrange multipliers),
+- \( b \) is the bias term.
+
+**Key Idea**: Prediction is a weighted sum of **similarity** (dot product) between the test point and support vectors.
+
+---
+
+## **2. Prediction in a Polynomial SVM**
+The **polynomial kernel** is defined as:
+
+\[
+K(x_i, x_j) = (x_i \cdot x_j + c)^d
+\]
+
+where:
+- \( c \) is a constant (we use **1**),
+- \( d \) is the degree of the polynomial (we use **2** for quadratic separation).
+
+#### **Impact on Prediction:**
+- If a test point has **high polynomial similarity** to positive-class support vectors, it is classified as **+1**.
+- If a test point has **higher similarity** to negative-class support vectors, it is classified as **-1**.
+- **Non-linear decision boundaries** emerge because polynomial similarity is not just based on distance but **higher-order relationships**.
+
+---
+
+## **3. Prediction in an RBF (Gaussian) SVM**
+The **RBF kernel** introduces a different notion of similarity:
+
+\[
+K(x_i, x_j) = \exp(-\gamma ||x_i - x_j||^2)
+\]
+
+where \( \gamma \) controls how **quickly similarity decreases** with distance.
+
+#### **Impact on Prediction:**
+- If a test point is **very close** to a particular support vector, the kernel similarity will be **near 1**.
+- If it is **far away**, the kernel similarity **drops towards 0**.
+- A **weighted sum** of these similarities determines classification:
+
+\[
+f(x) = \sum_{i \in SV} \alpha_i y_i K(x_i, x) + b
+\]
+
+---
+
+## **4. How Kernel Influence Affects Classification**
+To visualize how similarity determines classification in an SVM, let's compute the **weighted similarity scores** for a test point using R:
+
+
+#### **Expected Observations**
+- **Linear**: Influence increases linearly with \( x_1 \).
+- **Polynomial**: Influence rises sharply for large \( x_1 \), showing **non-linear growth**.
+- **RBF**: Influence **peaks near close points** and drops off exponentially.
+
+This explains **why RBF SVMs perform well on non-linearly separable data**—they assign influence locally, avoiding the need for a complex decision boundary in original space.
+
 
 ```{r}
 
@@ -446,4 +525,3 @@ ggplot(influence_df_long, aes(x = x1, y = value, color = name)) +
        x = "Training Points", y = "Kernel Similarity") +
   theme_minimal()
 ```
-
