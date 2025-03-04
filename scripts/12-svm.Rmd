@@ -118,9 +118,7 @@ library(kernlab)
 ```
 
 ```{r}
-
 # Generate synthetic data
-
 x <- seq(-3, 3, length.out = 100)   # Single feature
 y <- ifelse(x + rnorm(100, sd=1) > 0, 1, 0)  # Binary target with some noise
 data <- data.frame(x = x, y = as.factor(y))  # Convert y to a factor for classification
@@ -245,6 +243,7 @@ svm_model<-svm_rbf(
   rbf_sigma=tune())%>%
   set_engine("kernlab")
 ```
+
 ```{r}
 ou_rs <- mc_cv(ou_train, times=10)
 ```
@@ -259,7 +258,7 @@ ou_wf <- workflow() %>%
 ```
 
 ```{r}
-fit_svm=TRUE
+fit_svm=FALSE
 
 if(fit_svm){
   doParallel::registerDoParallel()
@@ -381,7 +380,7 @@ print(kernel_matrix)
 
 ```{r}
 # Train SVM with RBF kernel
-svm_model <- svm(y ~ ., data = df, kernel = "radial", gamma = 0.5, cost = 10)
+svm_model <- svm(y ~ ., data = df, kernel = "radial", gamma = 0.5, cost = 1)
 
 # Extract support vectors
 support_vectors <- df[svm_model$index, ]
