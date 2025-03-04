@@ -1,0 +1,68 @@
+---
+title: "13-case-study-6"
+author: "Will Doyle"
+date: "2025-03-04"
+output: github_document
+---
+**Case Study: Automated Grading and Feedback for Writing Assignments**
+
+**Background and Problem of Practice:**
+A state-wide virtual school is piloting an AI-assisted grading system to provide real-time feedback on student essays in English and social studies courses. The goal is to supplement teacher grading by identifying common writing errors, evaluating essay structure, and offering personalized feedback.
+
+The system aims to help students improve their writing skills by providing instant, constructive feedback while allowing teachers to focus on higher-level writing instruction and mentoring. The school seeks to implement the system in a way that balances efficiency with fairness and accuracy.
+
+**Dependent Variable(s) of Interest:**
+1. **Primary Outcome:** Quality of student writing (e.g., graded rubric score, pass/fail, improvement in revision quality).
+2. **Secondary Outcome:** Student engagement with feedback and improvements across multiple drafts.
+
+**Decision-Making Context:**
+The predictive analysis will help the virtual school:
+- Provide faster, data-driven feedback to students.
+- Reduce grading workload for teachers while maintaining instructional quality.
+- Identify common writing challenges at the class and school level.
+- Improve student writing outcomes through targeted recommendations.
+- Ensure fairness and equity in grading, avoiding biases in AI assessments.
+
+**Student Task:**
+In response to this case, your group should develop a predictive modeling approach that includes:
+
+1. **Operationalizing the Dependent Variable(s):**
+   - How should writing quality be measured (e.g., rubric-based scoring, automated text analysis)?
+   - How can student improvement be quantified across multiple drafts?
+   
+2. **Identifying Features for Prediction:**
+   - What independent variables should be included? Consider the following potential predictors:
+     - Sentence complexity and coherence
+     - Grammar and spelling accuracy
+     - Argument structure and use of supporting evidence
+     - Writing style and vocabulary richness
+     - Plagiarism detection indicators
+     - Length and completeness of the response
+     - Student revision history and engagement with feedback
+
+3. **Developing a Predictive Strategy:**
+   - How should automated grading be balanced with human oversight?
+   - How can the system differentiate between content-related and mechanical errors?
+   - How can fairness and bias mitigation be addressed in AI-generated grading?
+
+4. **Hyperparameter Tuning and Model Evaluation:**
+   - How should the model be trained and validated to ensure accuracy?
+   - What evaluation metrics should be used to compare AI grading with teacher grading?
+   - How can adaptive learning strategies be incorporated for personalized feedback?
+
+5. **Deployment and Recommendations for Practice:**
+   - How should the grading system be integrated into the virtual school’s learning platform?
+   - What measures should be taken to ensure transparency and explainability in AI-generated feedback?
+   - How should teachers be trained to use AI-generated insights effectively?
+   - How can students be encouraged to engage with feedback for meaningful writing improvement?
+
+**Communicating Results with Decision-Makers:**
+- How should predictive insights be framed for teachers, students, and administrators?
+- What visualizations (e.g., writing improvement dashboards, trend reports) can best illustrate key findings?
+- How should potential biases and limitations in AI grading be communicated?
+- What strategies can be used to gain trust and acceptance from educators and students?
+- How can feedback from human graders be integrated to improve the model over time?
+
+**Final Deliverable:**
+Your group will present a structured response, detailing the selected approach for each of the five components above. Provide a rationale for your choices and offer recommendations on how the virtual school should interpret and act on the results to support effective and equitable writing instruction.
+

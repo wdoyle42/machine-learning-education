@@ -1,0 +1,65 @@
+---
+title: "Case Study 1"
+author: "Will Doyle"
+date: "2025-03-04"
+output: html_document
+---
+
+**Case Study: Predicting Enrollment at a Midwestern Public University**
+
+**Background and Problem of Practice:**
+A public institution of higher education in the Midwest enrolls approximately 9,500 undergraduate students, admitting 2,000 first-year students each year. The university seeks to improve its enrollment forecasting to better allocate financial aid, housing, course offerings, and advising resources.
+
+Currently, they have a full dataset on all applicants, including demographic information, academic background, and engagement indicators. The institution wants to develop a predictive model to estimate overall enrollment and provide an additional breakdown of expected enrollment by GPA range (2.0-2.49, 2.5-2.99, 3.0-3.49, 3.5-4.0). The university’s admissions and financial aid teams will use these predictions to tailor outreach strategies, fine-tune enrollment goals, and allocate institutional resources effectively.
+
+**Dependent Variable(s) of Interest:**
+1. **Primary Outcome:** Whether an admitted student enrolls (binary: enrolled/not enrolled)
+2. **Secondary Outcome:** Enrollment count predictions segmented by high school GPA range
+
+**Decision-Making Context:**
+The university seeks to use predictive analytics to:
+- More accurately estimate the number of students who will enroll.
+- Identify specific trends in enrollment by academic preparedness.
+- Adjust financial aid strategies to maximize yield.
+- Improve outreach to students with a higher probability of matriculation.
+- Inform decisions about housing and course section availability.
+
+**Student Task:**
+In response to this case, your group should develop a predictive modeling approach that includes:
+1. **Operationalizing the Dependent Variable(s):**
+   - How should enrollment be defined and measured?
+   - What adjustments should be made for students who defer enrollment or accept admission but later withdraw?
+   
+2. **Identifying Features for Prediction:**
+   - What independent variables should be included in the model? Consider the following potential predictors:
+     - Student ZIP code (geographic distance, regional trends)
+     - High school attended (school characteristics, feeder school trends)
+     - Standardized test scores (if submitted)
+     - Campus visit history (indicator of engagement)
+     - High school GPA (as both a continuous and categorical variable)
+     - Student demographics (first-generation status, socioeconomic background, etc.)
+     - Application submission timing (early vs. late applicants)
+     - Major interest (STEM vs. humanities vs. undecided)
+
+3. **Selecting the Modeling Approach:**
+   - What type of model(s) should be used?
+     
+
+4. **Hyperparameter Tuning Strategy:**
+   - Which hyperparameters should be optimized?
+   - Should cross-validation be used for model evaluation?
+   - What criteria will be used for model selection (e.g., AUC, accuracy, recall)?
+   
+5. *Communication with Decisionmakers*   
+
+How should these results be communicated with decisionmakers? 
+
+5. **Deployment and Recommendations for Practice:**
+   - How should the model be deployed within the university’s admissions office?
+   - Should predictions be updated in real-time or recalculated periodically?
+   - What ethical considerations exist in using predictive analytics for enrollment decisions?
+   - How can the institution ensure transparency and fairness in model-driven decision-making?
+
+**Final Deliverable:**
+Your group will present a structured response, detailing the selected approach for each of the five components above. Provide a rationale for your modeling choices and offer recommendations for how the university should implement and interpret the results for decision-making.
+

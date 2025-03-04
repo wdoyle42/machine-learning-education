@@ -1,0 +1,67 @@
+---
+title: "13-case-study-4"
+author: "Will Doyle"
+date: "2025-03-04"
+output: github_document
+---
+**Case Study: Early Warning System for Dropout Prevention**
+
+**Background and Problem of Practice:**
+A large urban school district is facing high dropout rates, particularly among students from historically underserved communities. School leaders want to implement a data-driven early warning system to identify students at risk of dropping out before their junior year. By predicting which students are most vulnerable, the district hopes to intervene early with academic and social support.
+
+The district has access to a wide range of student data, including attendance records, academic performance, disciplinary incidents, and engagement in extracurricular activities. The goal is to use this data to predict which students are most at risk and provide targeted interventions to improve retention.
+
+**Dependent Variable(s) of Interest:**
+1. **Primary Outcome:** Likelihood of a student dropping out before the end of their junior year (binary: dropout/non-dropout).
+2. **Secondary Outcome:** Risk level categories (e.g., low, medium, high risk of dropout).
+
+**Decision-Making Context:**
+The predictive analysis will help the district:
+- Identify students who need early interventions.
+- Allocate resources effectively to counseling and support programs.
+- Improve graduation rates and long-term student success.
+- Provide school administrators and teachers with actionable insights to personalize student support.
+
+**Student Task:**
+In response to this case, your group should develop a predictive modeling approach that includes:
+
+1. **Operationalizing the Dependent Variable(s):**
+   - How should dropout be defined and measured for prediction?
+   - What time horizon should be used for predictions (e.g., identifying risks in 9th grade for potential dropouts by 11th grade)?
+   
+2. **Identifying Features for Prediction:**
+   - What independent variables should be included? Consider the following potential predictors:
+     - Attendance rates (e.g., chronic absenteeism, tardiness patterns)
+     - Course grades and GPA trends
+     - Standardized test scores
+     - Disciplinary records (suspensions, expulsions, behavioral incidents)
+     - Participation in extracurricular activities
+     - Socioeconomic factors (e.g., eligibility for free/reduced lunch)
+     - School engagement metrics (e.g., participation in academic support programs)
+     - Family and community factors (e.g., parental involvement, neighborhood trends)
+
+3. **Developing a Predictive Strategy:**
+   - How should the model account for students who transfer out of the district or re-enroll after dropping out?
+   - How can historical trends be leveraged to improve prediction accuracy?
+   - What steps should be taken to mitigate potential biases in prediction results?
+
+4. **Hyperparameter Tuning and Model Evaluation:**
+   - What strategies should be used to ensure model accuracy and fairness?
+   - How will model performance be evaluated?
+   - What measures should be taken to avoid disproportionately flagging certain demographic groups as high risk?
+
+5. **Deployment and Recommendations for Practice:**
+   - How should school staff be trained to use the early warning system?
+   - What interventions should be triggered based on different risk levels?
+   - How should the system be updated and refined over time?
+   - What safeguards should be in place to ensure ethical and non-discriminatory use of the model?
+
+**Communicating Results with Decision-Makers:**
+- How should school administrators interpret and act on risk predictions?
+- What visualizations (e.g., dashboards, student risk heatmaps) can best illustrate key findings?
+- How should uncertainty and potential false positives/negatives be communicated?
+- How can the model’s predictions be integrated into existing student support programs?
+- What strategies can be used to gain buy-in from teachers, counselors, and parents?
+
+**Final Deliverable:**
+Your group will present a structured response, detailing the selected approach for each of the five components above. Provide a rationale for your choices and offer recommendations on how the district should interpret and act on the results to support equitable student outcomes.

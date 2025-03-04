@@ -1,0 +1,67 @@
+---
+title: "13-case-study-5"
+author: "Will Doyle"
+date: "2025-03-04"
+output: html_document
+---
+**Case Study: Optimizing Course Recommendations for College Students**
+
+**Background and Problem of Practice:**
+A mid-sized university is developing an intelligent course recommendation system for undergraduate students. The goal is to provide personalized course suggestions that align with students’ academic strengths, degree requirements, and career aspirations while minimizing the risk of course withdrawals and failures. 
+
+The university wants to leverage historical student data to improve course recommendations, helping students select classes that optimize their success and progression toward graduation. This system should consider past academic performance, course difficulty, faculty grading tendencies, and other relevant factors to guide students toward the most suitable courses.
+
+**Dependent Variable(s) of Interest:**
+1. **Primary Outcome:** Student success in a recommended course (e.g., final grade, pass/fail, withdrawal rate).
+2. **Secondary Outcome:** Likelihood of on-time graduation based on course selection.
+
+**Decision-Making Context:**
+The predictive analysis will help the university:
+- Improve student retention and academic success.
+- Reduce course drop and failure rates.
+- Personalize academic advising at scale.
+- Provide insights into potential curriculum adjustments.
+- Ensure students stay on track for graduation in their chosen major.
+
+**Student Task:**
+In response to this case, your group should develop a predictive modeling approach that includes:
+
+1. **Operationalizing the Dependent Variable(s):**
+   - How should student success in a course be defined (e.g., letter grade, pass/fail, GPA impact)?
+   - Should different weightings be applied for elective courses vs. major-required courses?
+   
+2. **Identifying Features for Prediction:**
+   - What independent variables should be included? Consider the following potential predictors:
+     - Past course performance (grades in prerequisite courses, GPA trends)
+     - Course difficulty ratings (historical pass/fail rates, faculty grading trends)
+     - Student demographics and academic background
+     - Faculty teaching style and student feedback
+     - Student interest and career goals (survey data, major declaration)
+     - Course enrollment patterns (class size, time of day, modality—online vs. in-person)
+     - Peer success rates (performance of similar students in the course)
+
+3. **Developing a Predictive Strategy:**
+   - How should the recommendation system account for changes in curriculum or new course offerings?
+   - How can student feedback be integrated to refine recommendations?
+   - How should external factors like internships or study abroad plans be incorporated?
+
+4. **Hyperparameter Tuning and Model Evaluation:**
+   - What measures should be used to evaluate model effectiveness?
+   - How can the recommendation system be regularly updated and fine-tuned?
+   - How should student diversity be accounted for in predictive accuracy?
+
+5. **Deployment and Recommendations for Practice:**
+   - How should the recommendation system be integrated into student advising platforms?
+   - What level of autonomy should students have in adjusting recommendations?
+   - How should recommendations be presented to ensure transparency and usability?
+   - How should faculty and advisors be involved in refining and validating the model?
+
+**Communicating Results with Decision-Makers:**
+- How should predictive insights be framed for students, advisors, and faculty?
+- What visualizations (e.g., interactive dashboards, course success probability charts) can best illustrate key findings?
+- How should model limitations and potential biases be communicated?
+- How can students be encouraged to trust and engage with the recommendation system?
+- What strategies can be used to continuously improve student outcomes based on feedback?
+
+**Final Deliverable:**
+Your group will present a structured response, detailing the selected approach for each of the five components above. Provide a rationale for your choices and offer recommendations on how the university should interpret and act on the results to support effective academic planning and student success.

@@ -1,0 +1,69 @@
+---
+title: "Case Study 2"
+author: "Will Doyle"
+date: "2025-03-04"
+output: github_document
+---
+**Case Study: Predicting School Enrollment in a Suburban District**
+
+**Background and Problem of Practice:**
+A school superintendent in a suburban district is facing fluctuating enrollment across multiple schools. Some campuses have seen declining enrollment, prompting discussions about potential school closures or consolidations. The district needs a robust predictive model to estimate future enrollment at each school to inform decision-making about resource allocation, staffing, and infrastructure planning.
+
+Currently, the district has access to historical enrollment data, demographic shifts, new housing developments, transfer patterns, and socioeconomic factors. The superintendent is particularly interested in understanding which schools are likely to see continued declines and whether intervention strategies might stabilize or reverse enrollment trends.
+
+**Dependent Variable(s) of Interest:**
+1. **Primary Outcome:** Projected enrollment at each school for the next academic year (continuous variable: number of enrolled students per school)
+2. **Secondary Outcome:** Long-term enrollment trends over the next 3-5 years
+
+**Decision-Making Context:**
+The predictive analysis will help the district:
+- Identify schools at risk of under-enrollment.
+- Evaluate the potential need for school closures or consolidations.
+- Assess the impact of demographic and housing trends on enrollment.
+- Allocate resources such as teachers, support staff, and transportation services more effectively.
+- Develop intervention strategies for struggling schools.
+
+**Student Task:**
+In response to this case, your group should develop a predictive modeling approach that includes:
+
+1. **Operationalizing the Dependent Variable(s):**
+   - How should enrollment be measured for prediction (e.g., total students per school, grade-specific breakdowns)?
+   - Should historical trends be weighted differently based on recent shifts?
+   
+2. **Identifying Features for Prediction:**
+   - What independent variables should be included? Consider the following potential predictors:
+     - Historical enrollment trends per school
+     - Student demographics (race/ethnicity, socioeconomic status, special education needs)
+     - Housing development trends and zoning changes
+     - Birth rates and kindergarten enrollment trends
+     - Transfer patterns (students moving between schools in the district)
+     - School performance metrics (test scores, graduation rates, extracurricular offerings)
+     - Parental choice patterns (charter school, private school, homeschooling trends)
+
+3. **Developing a Predictive Strategy:**
+   - What approach should be used to generate accurate and reliable predictions?
+   - How should different data sources be combined and weighted?
+   - How should potential outliers and missing data be handled?
+
+4. **Hyperparameter Tuning and Model Evaluation:**
+   - What optimization strategies should be used to improve model accuracy?
+   - How will model performance be evaluated?
+   - Should feature selection techniques be applied to reduce complexity?
+
+5. **Deployment and Recommendations for Practice:**
+   - How should the model be integrated into the district’s decision-making process?
+   - What is the appropriate timeline for re-running the model to update projections?
+   - How should uncertainty in the predictions be communicated to stakeholders?
+   - What ethical considerations should be accounted for in using predictive analytics to close schools?
+   - How can the district use this information proactively rather than reactively (e.g., targeted investments in struggling schools)?
+
+**Communicating Results with Decision-Makers:**
+- How should predictive insights be framed for district leaders, school boards, and community stakeholders?
+- What visualizations (e.g., dashboards, maps, trend lines) can best illustrate key findings?
+- How can uncertainty and model limitations be communicated in an accessible way?
+- What strategies can be used to ensure that results are actionable and drive informed decision-making?
+- How can engagement with teachers, parents, and local officials improve transparency and buy-in for any decisions made using the predictions?
+
+**Final Deliverable:**
+Your group will present a structured response, detailing the selected approach for each of the five components above. Provide a rationale for your choices and offer recommendations on how the superintendent should interpret and act on the results to support equitable and data-driven decision-making.
+

@@ -1,0 +1,64 @@
+---
+title: "13-case-study-3"
+author: "Will Doyle"
+date: "2025-03-04"
+output: github_document
+---
+**Case Study: Predicting 8th Grade Math and Science Test Scores Using Adaptive Learning Data**
+
+**Background and Problem of Practice:**
+A company that provides adaptive testing and instructional tools for students, similar to ALEKS, is working to refine its predictive analytics. The company collects detailed clickstream data on student interactions with the platform, tracking how students engage with the instructional material, how quickly they progress, and their accuracy in completing tasks. 
+
+The company has the opportunity to integrate this rich dataset with student-level data from the state to develop a predictive model for 8th-grade math and science standardized test scores. The goal is to improve the instructional recommendations given to students and provide actionable insights for schools and districts about student performance trends.
+
+**Dependent Variable(s) of Interest:**
+1. **Primary Outcome:** Predicted standardized test scores in math and science for all 8th-grade students in the state.
+2. **Secondary Outcome:** Identification of students at risk of underperformance based on their engagement patterns and instructional progress.
+
+**Decision-Making Context:**
+The predictive analysis will support multiple stakeholders:
+- **The company** can refine its instructional algorithms to provide personalized learning pathways based on predicted outcomes.
+- **Teachers and school administrators** can use insights to identify students who need intervention and additional support before taking the state assessment.
+- **State education officials** can analyze broader performance trends and address equity gaps in student achievement.
+
+**Student Task:**
+In response to this case, your group should develop a predictive modeling approach that includes:
+
+1. **Operationalizing the Dependent Variable(s):**
+   - How should test scores be framed as a predictive outcome (e.g., raw scores, percentiles, proficiency categories)?
+   - Should different weightings be assigned based on prior performance trends?
+
+2. **Identifying Features for Prediction:**
+   - What independent variables should be included? Consider the following potential predictors:
+     - Clickstream data (e.g., time spent per module, number of attempts per question, frequency of platform engagement)
+     - Speed of progression through instructional content
+     - Mastery levels reached in different skill areas
+     - Student demographics and prior academic history (if available)
+     - School-level characteristics (e.g., average performance in prior years)
+     - Indicators of persistence (e.g., revisiting previously incorrect problems, engaging in additional practice sessions)
+
+3. **Developing a Predictive Strategy:**
+   - What approach should be used to generate accurate and reliable predictions?
+   - How should different data sources be combined and weighted?
+   - How should potential outliers and missing data be handled?
+
+4. **Hyperparameter Tuning and Model Evaluation:**
+   - What strategies should be used to ensure model accuracy?
+   - How will model performance be evaluated?
+   - Should different models be used for different student subgroups?
+
+5. **Deployment and Recommendations for Practice:**
+   - How should the company integrate the predictive model into its adaptive learning platform?
+   - What steps should be taken to ensure ethical and responsible use of predictive insights?
+   - How should educators and school leaders access and interpret the predictions to take appropriate action?
+   - What considerations should be made in communicating uncertainty in predictions to schools and districts?
+
+**Communicating Results with Decision-Makers:**
+- How should predictive insights be framed for teachers, administrators, and policymakers?
+- What visualizations (e.g., student-level dashboards, trend reports) can best illustrate key findings?
+- How should the limitations and potential biases of the model be communicated?
+- How can predictive insights be used to enhance, rather than replace, human decision-making?
+- What strategies can be used to ensure buy-in and trust from educators and students?
+
+**Final Deliverable:**
+Your group will present a structured response, detailing the selected approach for each of the five components above. Provide a rationale for your choices and offer recommendations on how the company should interpret and act on the results to support effective and equitable student learning outcomes.
