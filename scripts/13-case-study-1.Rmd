@@ -44,7 +44,6 @@ In response to this case, your group should develop a predictive modeling approa
 3. **Selecting the Modeling Approach:**
    - What type of model(s) should be used?
      
-
 4. **Hyperparameter Tuning Strategy:**
    - Which hyperparameters should be optimized?
    - Should cross-validation be used for model evaluation?
@@ -61,5 +60,5 @@ How should these results be communicated with decisionmakers?
    - How can the institution ensure transparency and fairness in model-driven decision-making?
 
 **Final Deliverable:**
-Your group will present a structured response, detailing the selected approach for each of the five components above. Provide a rationale for your modeling choices and offer recommendations for how the university should implement and interpret the results for decision-making.
+Your group will present a structured response, detailing the selected approach for each of the six components above. Provide a rationale for your modeling choices and offer recommendations for how the university should implement and interpret the results for decision-making.
 
