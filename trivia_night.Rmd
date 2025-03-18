@@ -1,0 +1,88 @@
+---
+title: "Trivia Night!"
+author: "Will Doyle"
+date: "2025-03-06"
+output: github_document
+---
+
+
+
+### **Easy Level**
+1. **What is the purpose of regularization in a GLM model?**  
+   a) To make the model more complex  
+   b) To prevent overfitting by penalizing large coefficients  
+   c) To remove outliers from the dataset  
+   d) To improve accuracy by using all available features  
+
+   **Answer:** b) To prevent overfitting by penalizing large coefficients  
+
+2. **Which tree-based model is an ensemble method that builds multiple decision trees and averages their predictions?**  
+
+   **Answer:** b) Random Forest  
+
+3. **Which type of validation method divides the dataset into multiple subsets, training the model on most of the subsets while testing on the remaining one, repeating this process multiple times so that each subset is used for testing exactly once?**  
+  K-fold cross validation
+
+ 
+
+
+
+### **Medium Level**
+4. **What is the main advantage of XGBoost over traditional decision trees?**  
+   a) It requires no hyperparameter tuning  
+   b) It uses boosting to iteratively improve weak models  
+   c) It only works on small datasets  
+   d) It does not use feature importance  
+
+   **Answer:** b) It uses boosting to iteratively improve weak models  
+
+5. **Which of the following is a key assumption when using Support Vector Machines (SVMs) with a linear kernel?**  
+   a) The data must be normally distributed  
+   b) The classes must be linearly separable  
+   c) There must be at least 1000 observations  
+   d) The features must be standardized  
+
+   **Answer:** b) The classes must be linearly separable  
+
+6. **Which two hyperparameters are commonly tuned in elastic net regression using cross-validation?**  
+
+
+   **Answer:** c) Lambda (penalty parameter)  and alpha (mixture), will also take l1 and l2
+ 
+---
+
+### **Hard Level**
+7. **In Bayesian optimization for hyperparameter tuning, what role does the acquisition function play?**  
+   a) It selects the next set of hyperparameters to evaluate  
+   b) It initializes the first batch of hyperparameters randomly  
+   c) It penalizes high-dimensional search spaces  
+   d) It directly minimizes the loss function  
+
+   **Answer:** a) It selects the next set of hyperparameters to evaluate  
+
+8. **What is one potential drawback of using simulated annealing for hyperparameter tuning?**  
+   a) It always converges to the same optimal solution  
+   b) It cannot escape local minima  
+   c) It requires another hyperparameter-- the  predefined schedule for temperature reduction  
+   d) It is only applicable to linear regression models  
+
+   **Answer:** c) It requires a predefined schedule for temperature reduction  
+
+8. **In Bayesian optimization for hyperparameter tuning, what role does the acquisition function play?**
+a) It selects the next set of hyperparameter values to evaluate
+b) It initializes the first batch of hyperparameters randomly
+c) It penalizes high-dimensional search spaces
+d) It directly minimizes the loss function 
+
+   Answer: a) It selects the next set of hyperparameter values to evaluate
+
+9. **In glmnet, what happens to the number of nonzero coefficients as the lambda parameter increases? Does the number increase or decrease?**
+
+Answer: Decreases
+
+
+Bonus question plus bet:
+
+**Which learning method we discussed builds learners sequentially, where each new learner corrects the errors of the previous ones?**
+
+Xgboost

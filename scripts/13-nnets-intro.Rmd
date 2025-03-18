@@ -1,0 +1,489 @@
+---
+title: "13-nnets-intro"
+author: "Will Doyle"
+date: "2025-03-18"
+output: github_document
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+**Introduction to Neural Network Architecture: The Basics with EMNIST Digits**
+
+We'll be working with the emnist data, which is based on individuals' handwriting.
+People were asked to write a digit, 0-9.
+This was encoded as a pixelated image, and labeled with the intended digit.
+There are many, many use cases here, but the original one was to allow for machine scanning of handwritten ZIP codes.
+In education, handwriting recognition is crucial in a huge number of use cases, including just basic numeracy among young learners.
+
+### Understanding Pixel Representation in a Dataset
+
+When working with image data, such as the EMNIST dataset, it is important to understand how images are represented numerically so they can be processed by a machine learning model.
+The EMNIST dataset is an extension of the classic MNIST dataset, containing grayscale images of handwritten characters and digits.
+For this lecture, we will focus on recognizing digits (0-9) using a simple neural network.
+
+Each image in the EMNIST dataset is represented as a grid of pixels.
+For example, the digit images are typically **28x28** pixel grayscale images.
+This means each image contains **784 pixels** (28 multiplied by 28), and each pixel is treated as an individual feature (or variable) in our dataset.
+
+### Pixel Values as Variables
+
+Since we are dealing with grayscale images, each pixel has a single intensity value representing how dark or light it is.
+These values usually range from **0 to 255**, where: - **0** represents a completely black pixel.
+- **255** represents a completely white pixel.
+- Values in between represent varying shades of gray.
+
+To standardize the input for neural networks, we typically **normalize** these pixel values, often scaling them to a range of **0 to 1** by dividing each value by 255.
+This transformation ensures that all input values are within a common range, improving the stability of training.
+
+### Structuring the Dataset for Neural Networks
+
+When feeding images into a neural network, each 28x28 image is **flattened into a single array** of 784 values.
+Instead of treating the image as a 2D matrix, we convert it into a **one-dimensional vector**: - An image that originally has the shape **(28, 28)** is reshaped into a **(784, 1)** column vector.
+- Each of the 784 values corresponds to a pixel's intensity in the original image.
+- This allows the neural network to process the image as a structured set of numerical inputs.
+
+### Neural Network Architecture Overview
+
+With our dataset prepared, we can introduce the structure of a basic **feedforward neural network**, which consists of three main types of layers: 1.
+**Input Layer:** - This layer consists of **784 neurons** (one for each pixel in the input image).
+- Each neuron receives a numerical input corresponding to the pixel intensity.
+
+2.  **Hidden Layers (Perceptrons):**
+    -   These layers consist of multiple neurons that learn to extract patterns from the input.
+    -   Each neuron applies a mathematical transformation (a weighted sum followed by an activation function) to its inputs.
+    -   The activation function introduces non-linearity, allowing the network to model complex relationships.
+3.  **Output Layer:**
+    -   This layer consists of **10 neurons**, one for each possible digit (0-9).
+
+    -   Each neuron outputs a probability score indicating how likely the input image represents a particular digit.
+
+    -   The final classification is determined by selecting the neuron with the highest probability.
+
+**Loading and Cleaning Data**
+```{r}
+
+library(tidyverse)
+library(tidymodels)
+library(tensorflow)
+library(janitor)
+
+mem.maxVSize(vsize = 32768)
+ 
+
+em<-read_csv("/Users/doylewr/machine-learning-education-datasets/emnist/emnist-digits-train.csv")%>%
+  clean_names()
+
+names(em)<-c("label",
+             paste0("pix_",1:784))
+```
+
+**Plotting The Data**
+
+```{r}
+
+plot_emnist_digit <- function(pixel_data) {
+  
+  print(paste("Displaying number", pixel_data$label))
+  
+  pixel_data<-pixel_data%>%select(-label)
+  # Ensure the pixel data has 784 elements
+  if (length(pixel_data) != 784) {
+    stop("Pixel data must contain 784 elements.")
+  }
+  
+  
+  # Reshape pixel data into a 28x28 matrix
+  pixel_matrix <- t(matrix(pixel_data, nrow = 28, ncol = 28, byrow = TRUE))
+  
+  pixel_df <- as.data.frame(pixel_matrix) %>%
+    mutate(row = 1:28) %>%
+    pivot_longer(cols = -row, names_to = "col", values_to = "intensity") %>%
+    mutate(col = as.integer(gsub("V", "", col) ),
+           intensity=as.numeric(intensity))
+  
+  
+  ggplot(pixel_df, aes(x = col, y = row, fill = intensity)) +
+    geom_tile() +
+    scale_fill_gradient(low = "white", high = "black") +
+    scale_y_reverse() +  # Flip y-axis for correct orientation
+    theme_minimal() +
+    theme(
+      axis.title = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      panel.grid = element_blank(),
+  legend.position="none")
+}
+```
+
+This function, plot_emnist_digit(), visualizes a handwritten digit from the EMNIST dataset.
+It first prints the digit's label to indicate which number is being displayed.
+The function then removes the label column, ensuring that only pixel values remain, and checks that the data contains exactly 784 values (corresponding to a 28×28 image).
+The pixel values are reshaped into a 28×28 matrix and transposed to align correctly for visualization.
+
+Next, the matrix is converted into a data frame and reshaped into a long format where each row represents a single pixel with corresponding row, column, and intensity values.
+The column names are cleaned, and pixel intensities are cast to numeric format.
+
+Finally, the function uses ggplot2 to create a heatmap representation of the digit.
+The geom_tile() function maps each pixel's intensity to a black-and-white gradient, where darker shades represent higher intensity.
+The y-axis is reversed to ensure the image appears in the correct orientation.
+The plot is styled with theme_minimal(), removing grid lines, axis titles, and labels for a clean display.
+The result is a properly oriented grayscale rendering of the EMNIST digit.
+
+Try this with at least five different digits!
+
+```{r}
+em%>%slice(412)%>%
+  plot_emnist_digit()
+```
+
+### **Ecosystems for Building and Training Neural Networks**
+
+Over the years, several deep learning frameworks have been developed to efficiently construct, train, and deploy neural networks.
+These frameworks provide optimized numerical computation, GPU acceleration, and high-level APIs for defining complex models.
+Below is an overview of some of the most widely used ecosystems, followed by an introduction to PyTorch and its integration with **tidymodels** via **brulee**, which we will use in this course.
+
+### **1. TensorFlow & Keras**
+
+-   **Developed by Google**, TensorFlow is a powerful framework for deep learning with strong industry adoption.
+-   Provides both **low-level control** (TensorFlow Core) and **high-level abstraction** (Keras).
+-   Optimized for production environments with tools for **deployment** (TensorFlow Serving, TensorFlow Lite, and TensorFlow.js).
+-   Best suited for large-scale models and real-time AI applications.
+
+### **2. PyTorch**
+
+-   **Developed by Meta (Facebook)**, PyTorch is a flexible and widely used deep learning framework.
+-   Known for its **dynamic computation graph**, which makes debugging and model modifications easier than TensorFlow.
+-   Has become the standard for research due to its **intuitive Pythonic syntax** and ease of use.
+-   Strong support for **GPU acceleration** and deployment tools like **TorchScript** and **ONNX**.
+-   Used extensively in academia and industry, making it a great choice for both research and production.
+
+### **3. JAX**
+
+-   Developed by **Google**, JAX is an advanced framework optimized for numerical computing and deep learning.
+-   Uses **XLA (Accelerated Linear Algebra)** for fast execution on TPUs and GPUs.
+-   Popular in research settings where automatic differentiation and parallel execution are needed.
+-   Provides **functional programming paradigms**, making it different from traditional deep learning libraries.
+
+### **4. MXNet**
+
+-   Developed by **Amazon**, MXNet is known for its **scalability** and **performance** on distributed computing platforms.
+-   Supports both **imperative (PyTorch-like) and symbolic (TensorFlow-like) programming**.
+-   Was once the primary backend for Apache Gluon but has lost traction compared to PyTorch and TensorFlow.
+
+### **5. TidyModels & Brulee (R Interface for PyTorch)**
+
+We'll fit a model using Torch. The interface for Torch with R is called brulee (get it?).
+
+Torch is a deep learning framework that is built on top of the Lua programming language. It provides a set of tools and libraries for building and training neural networks, including a powerful tensor library for efficient numerical computation.
+
+At its core, Torch represents neural networks as computational graphs, which are graphs of mathematical operations that are used to transform input data into output predictions. Each node in the graph represents an operation that takes input data and produces output data. These operations can include linear transformations, non-linear activations, pooling, and other common neural network operations.
+
+In Torch, neural networks are defined using a high-level scripting language called LuaJIT. This language allows users to define the structure of their neural networks, as well as the specific operations that are performed at each node in the graph. The LuaJIT code is then compiled into an efficient C implementation that can be run on a CPU or GPU.
+
+Torch also provides a set of pre-built neural network modules, such as convolutional layers, recurrent layers, and fully connected layers, that can be combined to create more complex networks. These pre-built modules are designed to be highly optimized for performance, and can be easily combined and customized to suit a wide range of applications.
+
+In this course, we will use **PyTorch** as the underlying deep learning framework, but we will interact with it through the **tidymodels** ecosystem using the **brulee** package.
+This allows us to leverage the power of PyTorch while maintaining the user-friendly, declarative approach of the **tidymodels** framework.
+
+-   **Tidymodels** provides a cohesive framework for modeling in R, with tools for preprocessing, resampling, and evaluation.
+-   **Brulee** serves as an interface between tidymodels and PyTorch, enabling users to define and train neural networks using familiar R syntax.
+-   This combination allows us to:
+    -   Use **R-based workflows** for preprocessing and model tuning.
+    -   Train deep learning models **efficiently using PyTorch**.
+    -   Keep all our modeling steps within the **tidymodels pipeline**, improving reproducibility.
+
+### **Why Use PyTorch + Tidymodels?**
+
+-   **Flexibility**: PyTorch offers full control over neural network design.
+-   **Ease of Use**: Tidymodels provides a streamlined approach to model construction and evaluation.
+-   **Reproducibility**: Keeping everything within the tidymodels framework ensures consistent workflows.
+
+By integrating **PyTorch with Brulee**, we combine the best of both worlds: the power of deep learning with the structured, intuitive modeling approach of **tidymodels**.
+This will allow us to efficiently train neural networks while leveraging the strengths of R’s data science ecosystem.
+
+
+### **1. Types of Neural Networks**
+
+ - **Feedforward Neural Networks (FNNs)**: Standard type of neural network where information moves in one direction (input → hidden layers → output).
+- **Convolutional Neural Networks (CNNs)**: Designed for image recognition; uses filters to extract spatial features.
+- **Recurrent Neural Networks (RNNs)**: Used for sequential data, such as time series or natural language processing (NLP).
+- **Transformers**: A more advanced model (e.g., used in GPT) that outperforms RNNs in handling sequential data.
+
+
+### **2. Training a Neural Network**
+
+-   **Forward Pass**: Computes the outputs by passing inputs through the layers.
+-   **Loss Function**: Measures the error (e.g., cross-entropy loss for classification).
+-   **Backpropagation**: Adjusts weights using gradients from the loss function.
+-   **Optimization Algorithms**: **Stochastic Gradient Descent (SGD), Adam, RMSprop**
+
+
+### **3. Overfitting and Regularization**
+
+Neural networks are powerful but prone to **overfitting** (memorizing training data instead of generalizing).
+Cover techniques to prevent this: - **Dropout**: Randomly deactivates neurons during training.
+- **L1/L2 Regularization (Weight Decay)**: Prevents excessive weight magnitudes.
+- **Early Stopping**: Stops training when validation performance plateaus.
+
+### **CPU vs. GPU vs. TPU: Why GPUs Are Often Preferred for Neural Networks**
+
+Neural networks involve heavy numerical computations, particularly matrix multiplications and backpropagation during training.
+The choice of hardware significantly impacts the speed and efficiency of training deep learning models.
+Below is a comparison of **Central Processing Units (CPUs), Graphics Processing Units (GPUs), and Tensor Processing Units (TPUs)** and why GPUs are often preferred for deep learning.
+
+
+### **1. CPU (Central Processing Unit)**
+
+The **CPU** is the general-purpose processor in all computers.
+It is optimized for a **wide range of tasks**, including operating systems, running applications, and basic computations.
+CPUs have the following characteristics:
+
+-   **Strengths:**
+    -   Excellent for **single-threaded** and general-purpose computing.
+    -   Optimized for **sequential processing** with fewer, high-performance cores.
+    -   Great for handling **preprocessing and small-scale ML tasks**.
+    -   Supports a vast array of software and frameworks.
+-   **Limitations for Neural Networks:**
+    -   **Slow training times** for deep learning models.
+    -   Limited parallel processing capabilities compared to GPUs.
+    -   Struggles with large-scale matrix operations.
+
+**When to Use a CPU?** - Small models (e.g., logistic regression, small neural nets).
+- Running inference on low-power devices (e.g., embedded systems, laptops).
+- Preprocessing data before feeding it into a deep learning model.
+
+### **2. GPU (Graphics Processing Unit)**
+
+The **GPU** was originally designed for rendering graphics in gaming but has become a powerhouse for deep learning.
+Unlike CPUs, GPUs have thousands of smaller, more efficient cores designed to **handle parallel computations**.
+
+-   **Strengths:**
+    -   **Massively parallel architecture** allows for processing thousands of operations simultaneously.
+    -   **Optimized for matrix operations**, which are fundamental to neural networks.
+    -   Significant acceleration of **training times**, often reducing days of computation to hours.
+    -   Supported by major deep learning frameworks like **PyTorch, TensorFlow, and JAX**.
+-   **Limitations:**
+    -   Higher **power consumption** than CPUs.
+    -   More expensive, especially high-end models (e.g., **NVIDIA A100, RTX 4090**).
+    -   Not ideal for general-purpose computing (inefficient for single-threaded tasks).
+
+**When to Use a GPU?** - Training deep learning models, especially large-scale neural networks.
+- Running inference on models requiring real-time processing (e.g., self-driving cars, real-time speech recognition).
+- Working with frameworks that have built-in GPU acceleration (**PyTorch, TensorFlow, JAX**).
+
+**Popular GPUs for Deep Learning:** - **Consumer GPUs**: NVIDIA RTX 3090, 4090 (for researchers, hobbyists).
+- **Enterprise GPUs**: NVIDIA A100, H100 (for large-scale training in data centers).
+- **Cloud GPUs**: Google Cloud, AWS, and Azure offer on-demand GPU access.
+
+### **3. TPU (Tensor Processing Unit)**
+
+A **TPU** is a specialized AI chip developed by **Google** specifically for deep learning workloads.
+Unlike CPUs and GPUs, TPUs are designed to handle large-scale **matrix multiplications and tensor operations** more efficiently.
+
+-   **Strengths:**
+    -   **Highly optimized for TensorFlow** (but can be used with PyTorch via JAX).
+    -   Faster and more power-efficient than GPUs for **specific deep learning workloads**.
+    -   Available on **Google Cloud**, making it accessible without expensive hardware.
+-   **Limitations:**
+    -   Less flexible than GPUs; optimized mainly for TensorFlow and JAX.
+    -   Limited availability outside Google’s cloud ecosystem.
+    -   Not as widely supported for general-purpose machine learning.
+
+**When to Use a TPU?** - Large-scale deep learning models, especially those trained on Google Cloud.
+- Applications that require extreme efficiency, such as **Google Translate and large NLP models (e.g., BERT, T5, PaLM).** - When using **TensorFlow/TPU-optimized models** in cloud-based workflows.
+
+### **Why Are GPUs Preferred for Deep Learning?**
+
+1.  **Parallel Processing**: Neural networks involve **massive amounts of matrix multiplications**, which GPUs handle much faster than CPUs due to their **thousands of cores**.
+2.  **Framework Support**: Libraries like **PyTorch, TensorFlow, and CUDA** are optimized for GPU acceleration, making it seamless to integrate GPUs into deep learning workflows.
+3.  **Scalability**: GPUs allow distributed training across **multiple GPUs**, enabling faster experimentation with larger datasets and deeper architectures.
+4.  **Accessibility**: While TPUs are highly efficient, they are mostly cloud-based. GPUs, on the other hand, are widely available for **local and cloud computing**.
+
+### **Final Takeaways**
+
+| Feature | **CPU** | **GPU** | **TPU** |
+|-------------------|------------------|------------------|------------------|
+| **Designed For** | General computing | Parallel processing (graphics, ML) | Deep learning workloads |
+| **Best At** | Sequential tasks | Neural network training | Large-scale tensor computations |
+| **Speed for ML** | Slow | Fast | Extremely fast (in specific cases) |
+| **Power Consumption** | Low | High | Moderate |
+| **Common Use Cases** | Preprocessing, small models | Training deep learning models | TensorFlow-based large-scale models |
+
+
+## Fitting a model in Tidymodels
+
+We'll start by converting the labels to factors. 
+```{r}
+em<-em%>%
+  mutate(label=as_factor(label))
+```
+
+## Training and Testing
+```{r}
+split_data<-em%>%initial_split()
+
+em_train<-training(split_data)
+
+em_test<-testing(split_data)
+```
+
+
+## Setting the formula and recipe
+```{r}
+em_formula<-as.formula("label~.")
+
+em_recipe<-recipe(em_formula,em_train)%>%
+  update_role(label,new_role = "outcome")%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+```
+
+## Specifying the Model
+```{r}
+nnet_model<- mlp(hidden_units = c(5,5,5,5,5), 
+                 epochs=tune(),
+                 penalty=tune(),
+                 learn_rate = tune(),
+                 activation="relu") %>%
+  set_mode("classification") %>% 
+  set_engine("brulee")
+```
+
+## Setting the Grid
+```{r}
+mlp_grid<-grid_regular(extract_parameter_set_dials(nnet_model),levels = c(3,3,3))
+```
+
+## Setting workflow
+```{r}
+em_wf<-workflow()%>%
+  add_model(nnet_model)%>%
+  add_recipe(em_recipe)
+```
+
+## Cross Validation
+```{r}
+em_cv<-mc_cv(em_train)
+```
+
+```{r}
+fit_nnet=FALSE
+
+if(fit_nnet){
+
+doParallel::registerDoParallel()
+  
+  nnet_fit<-em_wf%>%
+    tune_grid(resamples = em_cv,
+              grid=mlp_grid,
+              metrics=metric_set(
+                accuracy,
+                mn_log_loss
+              ))
+  
+  save(nnet_fit,file="nnet_fit.Rdata")
+  
+} else{
+  
+  load("nnet_fit.Rdata")
+}
+
+```
+
+
+```{r}
+
+
+```
+
+
+### Cross Entropy
+
+We'll evaluate these models using mean log loss, also called cross entropy. (It seems like everything in neural nets is about coming up with cooler names than statisticians use.)
+
+Cross-entropy is a common loss function used to train and evaluate neural network classifiers. It measures the difference between the predicted probabilities and the true labels of the training data. The goal of the neural network is to minimize this loss function during training, which leads to better classification performance.
+
+### **Understanding Cross-Entropy Loss in Neural Networks**
+
+**Cross-entropy loss** (also called log loss) is the most commonly used loss function for **classification problems**, including **multi-class classification** like our EMNIST digit recognition task. It measures how well the predicted probability distribution aligns with the true class labels.
+
+---
+
+### **1. Why Use Cross-Entropy?**
+In classification, a neural network outputs a probability distribution over possible classes. We want the predicted probabilities to be as **close as possible** to the actual labels. **Cross-entropy quantifies how "wrong" the predictions are**, with lower values indicating better predictions.
+
+- If the model is confident and correct → **low loss**.
+- If the model is confident but wrong → **high loss**.
+- If the model is uncertain but somewhat correct → **moderate loss**.
+
+---
+
+### **2. The Formula for Cross-Entropy Loss**
+For a single observation in a **multi-class classification problem** with \( C \) classes, the cross-entropy loss is:
+
+\[
+L = -\sum_{i=1}^{C} y_i \log(\hat{y}_i)
+\]
+
+where:
+- \( y_i \) is the **true label** (one-hot encoded: 1 for the correct class, 0 for others).
+- \( \hat{y}_i \) is the **predicted probability** of class \( i \) from the softmax output.
+- The sum runs over all possible classes.
+
+Since only the correct class contributes (because \( y_i = 0 \) for all incorrect classes), we can simplify for a **single example**:
+
+\[
+L = -\log(\hat{y}_{true})
+\]
+
+where \( \hat{y}_{true} \) is the predicted probability assigned to the correct class.
+
+---
+
+### **3. Intuition Behind Cross-Entropy**
+- If the model **assigns a high probability** to the correct class (e.g., 0.95), the loss is small:
+  \[
+  L = -\log(0.95) \approx 0.05
+  \]
+- If the model **is uncertain** and assigns equal probability (e.g., 0.10 across 10 classes), the loss is higher:
+  \[
+  L = -\log(0.10) = 2.3
+  \]
+- If the model **is very wrong** (e.g., assigns 0.01 probability to the true class), the loss is large:
+  \[
+  L = -\log(0.01) = 4.6
+  \]
+
+This means that cross-entropy **heavily penalizes confident but incorrect predictions**, forcing the model to learn better probability distributions.
+
+---
+
+### **4. Cross-Entropy in EMNIST Digit Classification**
+For digit classification (0-9), we have **10 possible classes**. The final layer of our neural network will use **softmax**, which converts raw outputs (logits) into probabilities:
+
+\[
+\hat{y}_i = \frac{e^{z_i}}{\sum_{j=1}^{10} e^{z_j}}
+\]
+
+where \( z_i \) is the raw output for class \( i \).
+
+- The **softmax output** gives a probability distribution.
+- The **cross-entropy loss** compares this distribution to the one-hot encoded true labels.
+
+
+
+### **6. Summary**
+- **Cross-entropy loss** is used for classification tasks because it measures how different the predicted probability distribution is from the true labels.
+- It **penalizes incorrect predictions more strongly** when the model is confident but wrong.
+- It works with **softmax output**, ensuring that predicted probabilities sum to 1.
+- **Lower loss means the model is assigning higher probability to the correct class**.
+
+Would you like an example implementation of cross-entropy loss in PyTorch?
+
+```{r}
+autoplot(nnet_fit)
+```
+
+
