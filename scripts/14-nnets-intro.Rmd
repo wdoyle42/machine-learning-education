@@ -61,6 +61,7 @@ With our dataset prepared, we can introduce the structure of a basic **feedforwa
     -   The final classification is determined by selecting the neuron with the highest probability.
 
 **Loading and Cleaning Data**
+
 ```{r}
 
 library(tidyverse)
@@ -91,7 +92,6 @@ plot_emnist_digit <- function(pixel_data) {
   if (length(pixel_data) != 784) {
     stop("Pixel data must contain 784 elements.")
   }
-  
   
   # Reshape pixel data into a 28x28 matrix
   pixel_matrix <- t(matrix(pixel_data, nrow = 28, ncol = 28, byrow = TRUE))
@@ -134,7 +134,7 @@ The result is a properly oriented grayscale rendering of the EMNIST digit.
 Try this with at least five different digits!
 
 ```{r}
-em%>%slice(412)%>%
+em%>%slice(689)%>%
   plot_emnist_digit()
 ```
 
@@ -174,15 +174,22 @@ Below is an overview of some of the most widely used ecosystems, followed by an 
 
 ### **5. TidyModels & Brulee (R Interface for PyTorch)**
 
-We'll fit a model using Torch. The interface for Torch with R is called brulee (get it?).
+We'll fit a model using Torch.
+The interface for Torch with R is called brulee (get it?).
 
-Torch is a deep learning framework that is built on top of the Lua programming language. It provides a set of tools and libraries for building and training neural networks, including a powerful tensor library for efficient numerical computation.
+Torch is a deep learning framework that is built on top of the Lua programming language.
+It provides a set of tools and libraries for building and training neural networks, including a powerful tensor library for efficient numerical computation.
 
-At its core, Torch represents neural networks as computational graphs, which are graphs of mathematical operations that are used to transform input data into output predictions. Each node in the graph represents an operation that takes input data and produces output data. These operations can include linear transformations, non-linear activations, pooling, and other common neural network operations.
+At its core, Torch represents neural networks as computational graphs, which are graphs of mathematical operations that are used to transform input data into output predictions.
+Each node in the graph represents an operation that takes input data and produces output data.
+These operations can include linear transformations, non-linear activations, pooling, and other common neural network operations.
 
-In Torch, neural networks are defined using a high-level scripting language called LuaJIT. This language allows users to define the structure of their neural networks, as well as the specific operations that are performed at each node in the graph. The LuaJIT code is then compiled into an efficient C implementation that can be run on a CPU or GPU.
+In Torch, neural networks are defined using a high-level scripting language called LuaJIT.
+This language allows users to define the structure of their neural networks, as well as the specific operations that are performed at each node in the graph.
+The LuaJIT code is then compiled into an efficient C implementation that can be run on a CPU or GPU.
 
-Torch also provides a set of pre-built neural network modules, such as convolutional layers, recurrent layers, and fully connected layers, that can be combined to create more complex networks. These pre-built modules are designed to be highly optimized for performance, and can be easily combined and customized to suit a wide range of applications.
+Torch also provides a set of pre-built neural network modules, such as convolutional layers, recurrent layers, and fully connected layers, that can be combined to create more complex networks.
+These pre-built modules are designed to be highly optimized for performance, and can be easily combined and customized to suit a wide range of applications.
 
 In this course, we will use **PyTorch** as the underlying deep learning framework, but we will interact with it through the **tidymodels** ecosystem using the **brulee** package.
 This allows us to leverage the power of PyTorch while maintaining the user-friendly, declarative approach of the **tidymodels** framework.
@@ -203,14 +210,12 @@ This allows us to leverage the power of PyTorch while maintaining the user-frien
 By integrating **PyTorch with Brulee**, we combine the best of both worlds: the power of deep learning with the structured, intuitive modeling approach of **tidymodels**.
 This will allow us to efficiently train neural networks while leveraging the strengths of R’s data science ecosystem.
 
-
 ### **1. Types of Neural Networks**
 
- - **Feedforward Neural Networks (FNNs)**: Standard type of neural network where information moves in one direction (input → hidden layers → output).
-- **Convolutional Neural Networks (CNNs)**: Designed for image recognition; uses filters to extract spatial features.
-- **Recurrent Neural Networks (RNNs)**: Used for sequential data, such as time series or natural language processing (NLP).
-- **Transformers**: A more advanced model (e.g., used in GPT) that outperforms RNNs in handling sequential data.
-
+-   **Feedforward Neural Networks (FNNs)**: Standard type of neural network where information moves in one direction (input → hidden layers → output).
+-   **Convolutional Neural Networks (CNNs)**: Designed for image recognition; uses filters to extract spatial features.
+-   **Recurrent Neural Networks (RNNs)**: Used for sequential data, such as time series or natural language processing (NLP).
+-   **Transformers**: A more advanced model (e.g., used in GPT) that outperforms RNNs in handling sequential data.
 
 ### **2. Training a Neural Network**
 
@@ -218,7 +223,6 @@ This will allow us to efficiently train neural networks while leveraging the str
 -   **Loss Function**: Measures the error (e.g., cross-entropy loss for classification).
 -   **Backpropagation**: Adjusts weights using gradients from the loss function.
 -   **Optimization Algorithms**: **Stochastic Gradient Descent (SGD), Adam, RMSprop**
-
 
 ### **3. Overfitting and Regularization**
 
@@ -232,7 +236,6 @@ Cover techniques to prevent this: - **Dropout**: Randomly deactivates neurons du
 Neural networks involve heavy numerical computations, particularly matrix multiplications and backpropagation during training.
 The choice of hardware significantly impacts the speed and efficiency of training deep learning models.
 Below is a comparison of **Central Processing Units (CPUs), Graphics Processing Units (GPUs), and Tensor Processing Units (TPUs)** and why GPUs are often preferred for deep learning.
-
 
 ### **1. CPU (Central Processing Unit)**
 
@@ -304,23 +307,24 @@ Unlike CPUs and GPUs, TPUs are designed to handle large-scale **matrix multiplic
 ### **Final Takeaways**
 
 | Feature | **CPU** | **GPU** | **TPU** |
-|-------------------|------------------|------------------|------------------|
+|----|----|----|----|
 | **Designed For** | General computing | Parallel processing (graphics, ML) | Deep learning workloads |
 | **Best At** | Sequential tasks | Neural network training | Large-scale tensor computations |
 | **Speed for ML** | Slow | Fast | Extremely fast (in specific cases) |
 | **Power Consumption** | Low | High | Moderate |
 | **Common Use Cases** | Preprocessing, small models | Training deep learning models | TensorFlow-based large-scale models |
 
-
 ## Fitting a model in Tidymodels
 
-We'll start by converting the labels to factors. 
+We'll start by converting the labels to factors.
+
 ```{r}
 em<-em%>%
   mutate(label=as_factor(label))
 ```
 
 ## Training and Testing
+
 ```{r}
 split_data<-em%>%initial_split()
 
@@ -329,8 +333,8 @@ em_train<-training(split_data)
 em_test<-testing(split_data)
 ```
 
-
 ## Setting the formula and recipe
+
 ```{r}
 em_formula<-as.formula("label~.")
 
@@ -341,6 +345,7 @@ em_recipe<-recipe(em_formula,em_train)%>%
 ```
 
 ## Specifying the Model
+
 ```{r}
 nnet_model<- mlp(hidden_units = c(5,5,5,5,5), 
                  epochs=tune(),
@@ -352,11 +357,13 @@ nnet_model<- mlp(hidden_units = c(5,5,5,5,5),
 ```
 
 ## Setting the Grid
+
 ```{r}
 mlp_grid<-grid_regular(extract_parameter_set_dials(nnet_model),levels = c(3,3,3))
 ```
 
 ## Setting workflow
+
 ```{r}
 em_wf<-workflow()%>%
   add_model(nnet_model)%>%
@@ -364,6 +371,7 @@ em_wf<-workflow()%>%
 ```
 
 ## Cross Validation
+
 ```{r}
 em_cv<-mc_cv(em_train)
 ```
@@ -392,98 +400,100 @@ doParallel::registerDoParallel()
 
 ```
 
-
 ```{r}
 
 
 ```
 
-
 ### Cross Entropy
 
-We'll evaluate these models using mean log loss, also called cross entropy. (It seems like everything in neural nets is about coming up with cooler names than statisticians use.)
+We'll evaluate these models using mean log loss, also called cross entropy.
+(It seems like everything in neural nets is about coming up with cooler names than statisticians use.)
 
-Cross-entropy is a common loss function used to train and evaluate neural network classifiers. It measures the difference between the predicted probabilities and the true labels of the training data. The goal of the neural network is to minimize this loss function during training, which leads to better classification performance.
+Cross-entropy is a common loss function used to train and evaluate neural network classifiers.
+It measures the difference between the predicted probabilities and the true labels of the training data.
+The goal of the neural network is to minimize this loss function during training, which leads to better classification performance.
 
 ### **Understanding Cross-Entropy Loss in Neural Networks**
 
-**Cross-entropy loss** (also called log loss) is the most commonly used loss function for **classification problems**, including **multi-class classification** like our EMNIST digit recognition task. It measures how well the predicted probability distribution aligns with the true class labels.
+**Cross-entropy loss** (also called log loss) is the most commonly used loss function for **classification problems**, including **multi-class classification** like our EMNIST digit recognition task.
+It measures how well the predicted probability distribution aligns with the true class labels.
 
----
+------------------------------------------------------------------------
 
 ### **1. Why Use Cross-Entropy?**
-In classification, a neural network outputs a probability distribution over possible classes. We want the predicted probabilities to be as **close as possible** to the actual labels. **Cross-entropy quantifies how "wrong" the predictions are**, with lower values indicating better predictions.
 
-- If the model is confident and correct → **low loss**.
-- If the model is confident but wrong → **high loss**.
-- If the model is uncertain but somewhat correct → **moderate loss**.
+In classification, a neural network outputs a probability distribution over possible classes.
+We want the predicted probabilities to be as **close as possible** to the actual labels.
+**Cross-entropy quantifies how "wrong" the predictions are**, with lower values indicating better predictions.
 
----
+-   If the model is confident and correct → **low loss**.
+-   If the model is confident but wrong → **high loss**.
+-   If the model is uncertain but somewhat correct → **moderate loss**.
+
+------------------------------------------------------------------------
 
 ### **2. The Formula for Cross-Entropy Loss**
-For a single observation in a **multi-class classification problem** with \( C \) classes, the cross-entropy loss is:
 
-\[
+For a single observation in a **multi-class classification problem** with $C$ classes, the cross-entropy loss is:
+
+$$
 L = -\sum_{i=1}^{C} y_i \log(\hat{y}_i)
-\]
+$$
 
-where:
-- \( y_i \) is the **true label** (one-hot encoded: 1 for the correct class, 0 for others).
-- \( \hat{y}_i \) is the **predicted probability** of class \( i \) from the softmax output.
+where: - $y_i$ is the **true label** (one-hot encoded: 1 for the correct class, 0 for others).
+- $\hat{y}_i$ is the **predicted probability** of class $i$ from the softmax output.
 - The sum runs over all possible classes.
 
-Since only the correct class contributes (because \( y_i = 0 \) for all incorrect classes), we can simplify for a **single example**:
+Since only the correct class contributes (because $y_i = 0$ for all incorrect classes), we can simplify for a **single example**:
 
-\[
+$$
 L = -\log(\hat{y}_{true})
-\]
+$$
 
-where \( \hat{y}_{true} \) is the predicted probability assigned to the correct class.
+where $\hat{y}_{true}$ is the predicted probability assigned to the correct class.
 
----
+------------------------------------------------------------------------
 
 ### **3. Intuition Behind Cross-Entropy**
-- If the model **assigns a high probability** to the correct class (e.g., 0.95), the loss is small:
-  \[
-  L = -\log(0.95) \approx 0.05
-  \]
-- If the model **is uncertain** and assigns equal probability (e.g., 0.10 across 10 classes), the loss is higher:
-  \[
-  L = -\log(0.10) = 2.3
-  \]
-- If the model **is very wrong** (e.g., assigns 0.01 probability to the true class), the loss is large:
-  \[
-  L = -\log(0.01) = 4.6
-  \]
+
+-   If the model **assigns a high probability** to the correct class (e.g., 0.95), the loss is small: $$
+    L = -\log(0.95) \approx 0.05
+    $$
+-   If the model **is uncertain** and assigns equal probability (e.g., 0.10 across 10 classes), the loss is higher: $$
+    L = -\log(0.10) = 2.3
+    $$
+-   If the model **is very wrong** (e.g., assigns 0.01 probability to the true class), the loss is large: $$
+    L = -\log(0.01) = 4.6
+    $$
 
 This means that cross-entropy **heavily penalizes confident but incorrect predictions**, forcing the model to learn better probability distributions.
 
----
+------------------------------------------------------------------------
 
 ### **4. Cross-Entropy in EMNIST Digit Classification**
-For digit classification (0-9), we have **10 possible classes**. The final layer of our neural network will use **softmax**, which converts raw outputs (logits) into probabilities:
 
-\[
+For digit classification (0-9), we have **10 possible classes**.
+The final layer of our neural network will use **softmax**, which converts raw outputs (logits) into probabilities:
+
+$$
 \hat{y}_i = \frac{e^{z_i}}{\sum_{j=1}^{10} e^{z_j}}
-\]
+$$
 
-where \( z_i \) is the raw output for class \( i \).
+where $z_i$ is the raw output for class $i$.
 
-- The **softmax output** gives a probability distribution.
-- The **cross-entropy loss** compares this distribution to the one-hot encoded true labels.
-
-
+-   The **softmax output** gives a probability distribution.
+-   The **cross-entropy loss** compares this distribution to the one-hot encoded true labels.
 
 ### **6. Summary**
-- **Cross-entropy loss** is used for classification tasks because it measures how different the predicted probability distribution is from the true labels.
-- It **penalizes incorrect predictions more strongly** when the model is confident but wrong.
-- It works with **softmax output**, ensuring that predicted probabilities sum to 1.
-- **Lower loss means the model is assigning higher probability to the correct class**.
+
+-   **Cross-entropy loss** is used for classification tasks because it measures how different the predicted probability distribution is from the true labels.
+-   It **penalizes incorrect predictions more strongly** when the model is confident but wrong.
+-   It works with **softmax output**, ensuring that predicted probabilities sum to 1.
+-   **Lower loss means the model is assigning higher probability to the correct class**.
 
 Would you like an example implementation of cross-entropy loss in PyTorch?
 
 ```{r}
 autoplot(nnet_fit)
 ```
-
-
