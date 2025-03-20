@@ -66,13 +66,12 @@ With our dataset prepared, we can introduce the structure of a basic **feedforwa
 
 library(tidyverse)
 library(tidymodels)
-library(tensorflow)
 library(janitor)
 
 mem.maxVSize(vsize = 32768)
  
 
-em<-read_csv("/Users/doylewr/machine-learning-education-datasets/emnist/emnist-digits-train.csv")%>%
+em<-read_csv("emnist-digits-train.csv")%>%
   clean_names()
 
 names(em)<-c("label",
@@ -347,7 +346,7 @@ em_recipe<-recipe(em_formula,em_train)%>%
 ## Specifying the Model
 
 ```{r}
-nnet_model<- mlp(hidden_units = c(5,5,5,5,5), 
+nnet_model<- mlp(hidden_units = c(5,5,5), 
                  epochs=tune(),
                  penalty=tune(),
                  learn_rate = tune(),
@@ -359,7 +358,14 @@ nnet_model<- mlp(hidden_units = c(5,5,5,5,5),
 ## Setting the Grid
 
 ```{r}
-mlp_grid<-grid_regular(extract_parameter_set_dials(nnet_model),levels = c(3,3,3))
+mlp_grid<-grid_regular(extract_parameter_set_dials(nnet_model),levels =c(2,2,2))
+mlp_grid <- mlp_grid %>%
+  mutate(epochs = case_when(
+    epochs == 5 ~ 10,
+    epochs == 500 ~ 100,
+    TRUE ~ epochs
+  ))
+
 ```
 
 ## Setting workflow
@@ -373,16 +379,15 @@ em_wf<-workflow()%>%
 ## Cross Validation
 
 ```{r}
-em_cv<-mc_cv(em_train)
+em_cv<-mc_cv(em_train,times=10)
 ```
 
 ```{r}
-fit_nnet=FALSE
+fit_nnet=TRUE
 
 if(fit_nnet){
 
-doParallel::registerDoParallel()
-  
+
   nnet_fit<-em_wf%>%
     tune_grid(resamples = em_cv,
               grid=mlp_grid,
@@ -397,11 +402,6 @@ doParallel::registerDoParallel()
   
   load("nnet_fit.Rdata")
 }
-
-```
-
-```{r}
-
 
 ```
 
@@ -492,8 +492,32 @@ where $z_i$ is the raw output for class $i$.
 -   It works with **softmax output**, ensuring that predicted probabilities sum to 1.
 -   **Lower loss means the model is assigning higher probability to the correct class**.
 
-Would you like an example implementation of cross-entropy loss in PyTorch?
+
 
 ```{r}
 autoplot(nnet_fit)
 ```
+
+```{r}
+show_best(nnet_fit,metric="mn_log_loss")
+```
+
+```{r}
+best_mn_log_loss <- select_best(nnet_fit,metric =  "mn_log_loss")
+```
+
+```{r}
+final_nnet <- finalize_workflow(
+  em_wf,
+  best_mn_log_loss
+)
+```
+
+```{r}
+
+
+final_res <- last_fit(final_nnet, split_data)
+
+collect_metrics(final_res)
+```
+
