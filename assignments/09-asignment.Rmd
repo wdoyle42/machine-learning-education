@@ -1,0 +1,17 @@
+---
+title: "Assignment 9"
+author: "Will Doyle"
+date: "2025-03-25"
+output: html_document
+---
+
+Using the notes from part 14:
+
+Preprocess the EMNIST letters data 
+
+Tune and then fit a neural net to predict each of the ten classes (Letters A-J)
+
+Plot the loss as a function of the hyperparameters.
+
+Evaluate accuracy on a test set. How accurate is your model? Is it accurate enough? 
+
