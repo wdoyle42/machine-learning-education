@@ -1,0 +1,43 @@
+---
+title: "08-Assignment"
+author: "Will Doyle"
+date: "2025-03-20"
+output: github_document
+---
+Here’s a structured assignment with 10 short-answer questions on neural network architecture, focusing on multinomial outcomes and cross-entropy loss.  
+
+---
+
+### **Assignment: Neural Network Architecture for Multinomial Outcomes**  
+**Instructions:** Answer the following questions in 2–4 sentences each. Be concise but precise in your explanations.  
+
+#### **1. Perceptrons and Neural Networks**  
+What is a perceptron, and how does it relate to modern neural network architectures?  
+
+#### **2. Input Layer**  
+In a neural network designed for multinomial classification, what determines the number of nodes in the input layer?  
+
+#### **3. Hidden Layers**  
+Why do we use hidden layers in a neural network, and how do they improve the model’s ability to classify complex data?  
+
+#### **4. Weights and Biases**  
+What role do weights and biases play in neural networks, and how are they updated during training?  
+
+#### **5. Activation Functions**  
+Why is the ReLU (Rectified Linear Unit) activation function commonly used in hidden layers instead of sigmoid or softmax?  
+
+#### **6. Output Layer and Softmax Function**  
+Explain why the softmax function is used in the output layer for multinomial classification. How does it transform raw model outputs into probabilities?  
+
+#### **7. Cross-Entropy Loss**  
+Define cross-entropy loss and explain why it is an appropriate loss function for multinomial classification tasks.  
+
+#### **8. Gradient Descent and Backpropagation**  
+How does backpropagation work in conjunction with gradient descent to minimize cross-entropy loss?  
+
+#### **9. Overfitting and Regularization**  
+What is overfitting in neural networks, and how can techniques like dropout or L2 regularization help prevent it?  
+
+#### **10. Interpreting Softmax Outputs**  
+If a neural network with a softmax output layer produces the following probability distribution for three classes—(0.1, 0.7, 0.2)—how should the model's prediction be interpreted? What does this tell us about the certainty of the model’s choice?  
+
