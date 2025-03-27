@@ -4,118 +4,86 @@ author: "Will Doyle"
 date: "2025-03-25"
 output: html_document
 ---
+## Backpropagation
 
-### Simple Backpropagation Example in a Two-Step Process
+In this lesson, we'll work through a simulated example to show how backpropagation works. This is somewhat abstracted away from the actual way neural nets function, but close enough to give you a good picture of what's going on.
 
-This example shows how to apply backpropagation in a simple scenario: improving the output of a process that passes through **two sequential transformations**.
+The function below, `generate_synthetic_data`, creates a synthetic dataset for a multi-class classification problem. It allows the user to specify the number of samples (`n_samples`), the dimensionality of each input vector (`input_dim`), the number of classes (`n_classes`), and the standard deviation of "noise" (`noise_sd`). First, it generates a set of random centroids—one for each class—serving as the mean vectors for the input features. Then, for each sample, it randomly selects a class, retrieves the corresponding centroid, and adds Gaussian noise to generate an input vector centered around that class's centroid. The function stores each input in matrix X and encodes the class labels in a one-hot format in matrix Y. Finally, it returns a list containing X (the feature matrix) and Y (the one-hot encoded label matrix).
 
-------------------------------------------------------------------------
-
-### ✨ Problem Setup
-
-We define a simple model: - Input `x` goes through two steps: 1. `z = x * w1` 2. `y_hat = z + w2` - Goal: Minimize the squared error loss between `y_hat` and true output `y`:
-
-$$
-L = (y_\text{hat} - y)^2
-$$
-
-We update `w1` and `w2` using backpropagation and gradient descent.
-
-------------------------------------------------------------------------
-
-### Step-by-Step Example in R
 
 ```{r}
-# Input and target output
-y <- 10
-x <- 2
 
-# Initial weights
-w1 <- 1.0
-w2 <- 1.0
+generate_synthetic_data <- function(n_samples = 1000, 
+                                    input_dim = 10, 
+                                    n_classes = 5, 
+                                    noise_sd = 0.1) {
 
-# Learning rate
-lr <- 0.1
-
-# Forward pass
-z <- x * w1         # Step 1
-y_hat <- z + w2     # Step 2
-loss <- (y_hat - y)^2
-
-# Backward pass
-# Derivative of loss w.r.t. w2
-# dL/dw2 = 2 * (y_hat - y)
-dL_dw2 <- 2 * (y_hat - y)
-
-# Derivative of loss w.r.t. w1
-# dL/dw1 = 2 * (y_hat - y) * x
-dL_dw1 <- 2 * (y_hat - y) * x
-
-# Update weights
-w1 <- w1 - lr * dL_dw1
-w2 <- w2 - lr * dL_dw2
-
-# Print updated values
-cat("Updated w1:", w1, "\n")
-cat("Updated w2:", w2, "\n")
-cat("Loss:", loss, "\n")
-```
-
-------------------------------------------------------------------------
-
-### 🏋️ General Function
-
-```{r}
-backprop_toy_step <- function(x, y, w1, w2, lr = 0.1) {
-  # Forward pass
-  z <- x * w1
-  y_hat <- z + w2
-  loss <- (y_hat - y)^2
-
-  # Gradients
-  dL_dw2 <- 2 * (y_hat - y)
-  dL_dw1 <- 2 * (y_hat - y) * x
-
-  # Update
-  w1 <- w1 - lr * dL_dw1
-  w2 <- w2 - lr * dL_dw2
-
-  list(w1 = w1, w2 = w2, loss = loss, y_hat = y_hat)
-}
-```
-
-------------------------------------------------------------------------
-
-### Run for Multiple Steps
-
-```{r}
-# Initialize
-w1 <- 1
-w2 <- 1
-x <- 2
-y <- 10
-
-# Run training loop
-for (i in 1:10) {
-  result <- backprop_toy_step(x, y, w1, w2, lr = 0.1)
-  cat("Iteration", i, "- Loss:", result$loss, "\n")
-  w1 <- result$w1
-  w2 <- result$w2
+  
+  # Step 1: Create class centroids (each is a 784-dim mean vector)
+  centroids <- matrix(rnorm(n_classes * input_dim, mean = 0, sd = 1), 
+                      nrow = n_classes, ncol = input_dim)
+  
+  # Storage for generated data
+  X <- matrix(0, nrow = n_samples, ncol = input_dim)
+  Y <- matrix(0, nrow = n_samples, ncol = n_classes)  # one-hot encoded
+  
+  for (i in 1:n_samples) {
+    class <- sample(0:(n_classes - 1), 1)  # Random class label 0–9
+    centroid <- centroids[class + 1, ]    # Get corresponding centroid
+    
+    # Generate input vector: add noise around centroid
+    x_i <- centroid + rnorm(input_dim, mean = 0, sd = noise_sd)
+    
+    # Store input and one-hot label
+    X[i, ] <- x_i
+    Y[i, class + 1] <- 1
+  }
+  
+  list(X = X, Y = Y)
 }
 ```
 
 ```{r}
+k<-784
 
-  # Input vector (10 features)
-  x <- c(0.5, -1.0, 0.3, 0.1, -0.2, 0.8, 0.0, 0.4, -0.5, 1.2)
-  
-  # True label (one-hot for class 2)
-  y <- c(0, 1, 0)  # class 2 is the correct class
-  
+n<-1000
+
+j<-10
+
+synth<-generate_synthetic_data(n_samples=n,
+                        input_dim=k,
+                        n_classes=j,
+                        noise_sd = .5)
+
 ```
 
 ```{r}
-initialize_network <- function(input_dim = 10, hidden_dim = 5, output_dim = 3) {
+
+X <- synth$X
+Y <- synth$Y
+
+labels <- apply(Y, 1, function(row) which(row == 1) - 1)
+
+# Run PCA
+pca_result <- prcomp(X, center = TRUE, scale. = TRUE)
+pca_df <- as.data.frame(pca_result$x[, 1:2])  # Get first 2 principal components
+colnames(pca_df) <- c("PC1", "PC2")
+pca_df$class <- as.factor(labels)
+
+# Scatter plot using ggplot2
+ggplot(pca_df, aes(x = PC1, y = PC2, color = class)) +
+  geom_point(alpha = 0.8, size = 2) +
+  labs(
+       x = "Principal Component 1",
+       y = "Principal Component 2",
+       color = "Class") +
+  theme_minimal()
+```
+
+
+The `initialize_network` function below sets up a simple two-layer neural network by randomly initializing its weights and biases. This is handled by torch/pytorch internally.   It takes three arguments: `input_dim` (number of input features), `hidden_dim` (number of neurons in the hidden layer), and `output_dim` (number of output classes or units). The function returns a list containing four components: `W1`, a weight matrix connecting the input layer to the hidden layer; `b1`, a bias vector for the hidden layer; `W2`, a weight matrix connecting the hidden layer to the output layer; and `b2`, a bias vector for the output layer. The weights are initialized with small random values uniformly drawn from the interval [-0.1, 0.1], while the biases are initialized to zero. The final line assigns this initialized network to the variable network.
+```{r}
+initialize_network <- function(input_dim = k, hidden_dim = 5, output_dim = j) {
   list(
     W1 = matrix(runif(hidden_dim * input_dim, -0.1, 0.1), nrow = hidden_dim),
     b1 = rep(0, hidden_dim),
@@ -127,7 +95,8 @@ network<-initialize_network()
 ```
 
 ```{r}
-backprop_step <- function(x, y, network, lr = 0.1) {
+
+backprop_step <- function(X, Y, network, lr = 0.1) {
   # INPUTS:
   # x: input vector (numeric vector of length 784 for a 28x28 image)
   # y: one-hot encoded label vector (length 10; e.g., class 3 → c(0,0,1,0,...,0))
@@ -138,6 +107,8 @@ backprop_step <- function(x, y, network, lr = 0.1) {
   #   - b2: bias vector (10 x 1), for output layer
   # lr: learning rate (scalar, step size for updating weights)
 
+  n_samples<-nrow(X)
+  
   # --- UNPACK WEIGHTS ---
   W1 <- network$W1  # (5 x 784)
   b1 <- network$b1  # (5 x 1)
@@ -147,54 +118,56 @@ backprop_step <- function(x, y, network, lr = 0.1) {
   # --- FORWARD PASS ---
 
   # Step 1: Compute hidden layer linear combination
-  z1 <- W1 %*% x + b1  # z1: (5 x 1) = weighted input to hidden units
+  Z1 <- X %*% t(W1) +matrix(rep(b1, each = n_samples), nrow = n_samples)
 
+  
   # Step 2: Apply ReLU activation to hidden layer
-  a1 <- pmax(0, z1)    # a1: (5 x 1) = activated output from hidden layer
+  A1 <- pmax(0, Z1)    # a1: (5 x 1) = activated output from hidden layer
 
+  A1<-matrix(A1,n_samples,5)
+  
   # Step 3: Compute output layer linear combination
-  z2 <- W2 %*% a1 + b2 # z2: (10 x 1) = weighted input to output layer
-
-  # Step 4: ReLU again (unusual before softmax, but left in per original)
-  a2 <- pmax(0, z2)    # a2: (10 x 1)
+  Z2 <- A1 %*% t(W2) + matrix(rep(b2, each = n_samples), nrow = n_samples)
 
   # Step 5: Softmax to turn output into probabilities
-  softmax <- function(z) {
-    exp_z <- exp(z - max(z))      # subtract max for numerical stability
-    exp_z / sum(exp_z)            # softmax output (10 x 1)
-  }
-  y_hat <- softmax(a2)  # Predicted probabilities for 10 classes
+softmax <- function(z) {
+  exp_z <- exp(z - apply(z, 1, max))  # subtract row-wise max for stability
+  exp_z / rowSums(exp_z)
+}
+
+  Y_hat <- softmax(Z2)  # Predicted probabilities for 10 classes
 
   # Step 6: Compute cross-entropy loss
   # Loss is a scalar: -log(probability of correct class)
-  loss <- -sum(y * log(y_hat))  # scalar loss
+  loss <- -sum(Y * log(Y_hat))  # scalar loss
 
   # --- BACKWARD PASS (Backpropagation) ---
 
   # Step 7: Derivative of loss w.r.t. a2 (after softmax)
-  dz2 <- y_hat - y         # (10 x 1): error at output layer
+  dZ2 <- (Y_hat - Y)/n_samples         # (10 x 1): error at output layer
 
-  # Step 8: Gradients for W2 and b2
-  dW2 <- dz2 %*% t(a1)     # (10 x 5): outer product
-  db2 <- dz2              # (10 x 1): just the output error
-
+  
+  # Gradients for W2 and b2
+  dW2 <- t(dZ2) %*% A1            # (10 x 5)
+  db2 <- colSums(dZ2)             # (10)
+  
   # Step 9: Backpropagate error to hidden layer
-  dz1 <- t(W2) %*% dz2     # (5 x 1): error signal passed backward
-
+  dA1 <- dZ2%*% W2      # (5 x 1): error signal passed backward
+  dZ1<-dA1
   # Step 10: ReLU derivative (zero out where z1 was ≤ 0)
-  dz1[z1 <= 0] <- 0        # (5 x 1): elementwise
+  dZ1[Z1 <= 0] <- 0  
 
   # Step 11: Gradients for W1 and b1
-  dW1 <- dz1 %*% t(x)      # (5 x 784): outer product of dz1 and input x
-  db1 <- dz1              # (5 x 1): bias gradient is just the error
+  dW1 <- t(dZ1) %*% X      # (5 x 784): outer product of dz1 and input x
+  db1 <- colSums(dZ1)              # (5 x 1): bias gradient is just the error
 
   # --- UPDATE WEIGHTS USING GRADIENT DESCENT ---
 
   # Adjust weights and biases in direction that reduces loss
-  W1 <- W1 - lr * dW1      # (5 x 784): input-to-hidden weights
-  b1 <- b1 - lr * db1      # (5 x 1): hidden biases
-  W2 <- W2 - lr * dW2      # (10 x 5): hidden-to-output weights
-  b2 <- b2 - lr * db2      # (10 x 1): output biases
+  W1 <- W1 - (lr * dW1)      # (5 x 784): input-to-hidden weights
+  b1 <- b1 - (lr * db1)      # (5 x 1): hidden biases
+  W2 <- W2 - (lr * dW2)      # (10 x 5): hidden-to-output weights
+  b2 <- b2 - (lr * db2)      # (10 x 1): output biases
 
   # --- RETURN UPDATED MODEL STATE ---
   list(
@@ -209,7 +182,42 @@ backprop_step <- function(x, y, network, lr = 0.1) {
   )
 }
 
-network
-
-network<-backprop_step(x=x,y=y,network$network)
 ```
+
+
+## First Run
+```{r}
+updated<-backprop_step(X=synth$X,Y=synth$Y,network=network)
+```
+
+```{r}
+updated$loss
+```
+
+## Next Run
+```{r}
+updated<-backprop_step(X=synth$X,Y=synth$Y,network=updated$network)
+```
+
+```{r}
+updated$loss
+```
+
+
+```{r}
+
+# Placeholder for loss tracking
+loss_history <- numeric(100)
+
+# Run for 100 iterations
+for (i in 1:100) {
+  updated <- backprop_step(X = synth$X, Y = synth$Y, network = network, lr = 0.1)
+  network <- updated$network  # update network in place
+  loss_history[i] <- updated$loss
+  
+  if (i %% 10 == 0) {
+    cat(sprintf("Iteration %d - Loss: %.4f\n", i, updated$loss))
+  }
+}
+```
+
