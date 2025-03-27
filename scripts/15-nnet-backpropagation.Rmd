@@ -221,3 +221,14 @@ for (i in 1:100) {
 }
 ```
 
+
+```{r}
+loss_history<-data.frame(loss_history,x=1:100)
+```
+
+```{r}
+loss_history%>%
+  ggplot(aes(x=x,y=loss_history))+
+  geom_line()
+```
+

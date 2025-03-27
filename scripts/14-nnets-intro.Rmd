@@ -384,7 +384,7 @@ mlp_grid <- mlp_grid %>%
     TRUE ~ epochs
   ))
 
->>>>>>> 235c70b6a1ff29e7159d450669d3c854b3bd1854
+
 ```
 
 ## Setting workflow
@@ -405,12 +405,7 @@ em_cv<-mc_cv(em_train,times=10)
 fit_nnet=TRUE
 
 if(fit_nnet){
-<<<<<<< HEAD
-  
-=======
 
-
->>>>>>> 235c70b6a1ff29e7159d450669d3c854b3bd1854
   nnet_fit<-em_wf%>%
     tune_grid(resamples = em_cv,
               grid=mlp_grid,
@@ -546,7 +541,6 @@ final_res <- last_fit(final_nnet, split_data)
 collect_metrics(final_res)
 ```
 
-<<<<<<< HEAD
+
 **Question: Is this accurate enough?**
-=======
->>>>>>> 235c70b6a1ff29e7159d450669d3c854b3bd1854
+
