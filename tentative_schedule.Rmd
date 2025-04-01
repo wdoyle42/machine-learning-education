@@ -41,14 +41,16 @@ March 25, 2025 Neural nets: backpropagation
 
 March 27, 2025 Neural nets: hyperparameters
 
-April 1, 2025 Neural nets: tuning April 3, 2025
+April 1, 2025 Neural nets: regularization and variable importance
 
-Neural nets: Further application and tweaking April 8, 2025
+April 3, 2025 NLP Text: basics of text analysis, tokenization and stop
+words ([smltar]([smltar](https://smltar.com/) chs 2 and 3)
 
-Neural nets: deep learning April 10, 2025
+April 8, 2025 NLP: Basics of text analysis: Stemming and embedding
+([smltar](https://smltar.com/, chs 4 and 5)
 
-Neural nets: deploying
+April 10, 2025 NLP: Deep Learning, Dense Neural Nets ([smltar](https://smltar.com/ ch 8)
 
-April 15, 2025 Intro to nlp and cnn
+April 15, 2025 NLP: Deep Learning, CNNs ([smltar](https://smltar.com/, ch 10)
 
-April 17, 2025 NLP, continued/class wrap-up
+April 17, 2025 NLP: Deep Learning, CNNs part 2 ([smltar](https://smltar.com/, ch 10)
