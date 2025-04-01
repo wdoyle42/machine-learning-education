@@ -363,7 +363,7 @@ nnet_model<- mlp(hidden_units = c(5,5,5),
 ## Setting the Grid
 
 ```{r}
-<<<<<<< HEAD
+
 param_set <- extract_parameter_set_dials(nnet_model)
 
 # Generate a grid
@@ -376,7 +376,7 @@ mlp_grid <- mlp_grid %>%
     TRUE ~ epochs  # Keeps other values unchanged
   ))
 
-mlp_grid<-grid_regular(extract_parameter_set_dials(nnet_model),levels =c(2,2,2))
+mlp_grid<-grid_regular(extract_parameter_set_dials(nnet_model),levels =2)
 mlp_grid <- mlp_grid %>%
   mutate(epochs = case_when(
     epochs == 5 ~ 10,
@@ -402,7 +402,7 @@ em_cv<-mc_cv(em_train,times=10)
 ```
 
 ```{r}
-fit_nnet=TRUE
+fit_nnet=FALSE
 
 if(fit_nnet){
 
@@ -532,6 +532,9 @@ final_nnet <- finalize_workflow(
   em_wf,
   best_mn_log_loss
 )
+
+save(final_nnet,file="final_nnet.Rdata")
+
 ```
 
 ```{r}

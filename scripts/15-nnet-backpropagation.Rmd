@@ -12,6 +12,7 @@ The function below, `generate_synthetic_data`, creates a synthetic dataset for a
 
 
 ```{r}
+library(tidyverse)
 
 generate_synthetic_data <- function(n_samples = 1000, 
                                     input_dim = 10, 
@@ -66,16 +67,16 @@ labels <- apply(Y, 1, function(row) which(row == 1) - 1)
 
 # Run PCA
 pca_result <- prcomp(X, center = TRUE, scale. = TRUE)
-pca_df <- as.data.frame(pca_result$x[, 1:2])  # Get first 2 principal components
-colnames(pca_df) <- c("PC1", "PC2")
+pca_df <- as.data.frame(pca_result$x[, 3:4])  # Get first 2 principal components
+colnames(pca_df) <- c("PC3", "PC4")
 pca_df$class <- as.factor(labels)
 
 # Scatter plot using ggplot2
-ggplot(pca_df, aes(x = PC1, y = PC2, color = class)) +
+ggplot(pca_df, aes(x = PC3, y = PC4, color = class)) +
   geom_point(alpha = 0.8, size = 2) +
   labs(
-       x = "Principal Component 1",
-       y = "Principal Component 2",
+       x = "Principal Component 3",
+       y = "Principal Component 4",
        color = "Class") +
   theme_minimal()
 ```
@@ -177,7 +178,7 @@ softmax <- function(z) {
       W2 = W2,
       b2 = b2
     ),
-    prediction = y_hat,    # softmax probabilities (10 x 1)
+    prediction = Y_hat,    # softmax probabilities (10 x 1)
     loss = loss            # scalar loss value
   )
 }
@@ -210,8 +211,8 @@ updated$loss
 loss_history <- numeric(100)
 
 # Run for 100 iterations
-for (i in 1:100) {
-  updated <- backprop_step(X = synth$X, Y = synth$Y, network = network, lr = 0.1)
+for (i in 1:1000) {
+  updated <- backprop_step(X = synth$X, Y = synth$Y, network = network, lr = 0.5)
   network <- updated$network  # update network in place
   loss_history[i] <- updated$loss
   
@@ -223,7 +224,7 @@ for (i in 1:100) {
 
 
 ```{r}
-loss_history<-data.frame(loss_history,x=1:100)
+loss_history<-data.frame(loss_history,x=1:1000)
 ```
 
 ```{r}

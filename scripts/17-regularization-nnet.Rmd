@@ -1,0 +1,69 @@
+---
+title: "Regularization in Neural Nets"
+author: "Will Doyle"
+date: "2025-04-01"
+output: github_document
+---
+
+# Regularization in Neural Networks with torch via tidymodels and brulee
+
+Regularization is a fundamental concept in training neural networks effectively, particularly when working with flexible models that can easily overfit to training data. In the context of using `torch` via the `brulee` engine in the `tidymodels` ecosystem, regularization can be implemented through various techniques such as weight decay and dropout. This document summarizes how these methods work and how to apply them using the `tidymodels` interface.
+
+------------------------------------------------------------------------
+
+## Regularization Overview
+
+**Regularization** refers to techniques that constrain or penalize model complexity to improve generalization. In neural networks, the most common regularization methods are:
+
+-   **Weight decay (L2 regularization)**
+-   **L1 regularization** (less commonly used, but useful for sparsity)
+-   **Dropout**
+
+These methods can be applied individually or in combination, depending on the architecture and the problem domain.
+
+------------------------------------------------------------------------
+
+## Weight Decay in torch with brulee
+
+**Weight decay** penalizes large weights by adding a term to the loss function proportional to the sum of squared weights (L2 norm). The modified loss becomes:
+
+$$ L_{total} = L_{data} + \lambda \sum w^2 $$
+
+In `torch` and `brulee`, L2 regularization is implemented via the `weight_decay` parameter in the optimizer, and is configured in `tidymodels` via the `penalty` argument in the model specification.
+
+### Example: Weight Decay with brulee
+
+```{r}
+mlp_spec <- mlp(hidden_units = 12, epochs = 30, penalty = 0.001) %>%
+  set_mode("classification") %>%
+  set_engine("brulee", model = custom_model_definition)
+```
+
+-   The `penalty` value (e.g., 0.001) sets the L2 regularization strength.
+-   Internally, this is passed to the optimizer as `weight_decay`.
+
+### L1 Regularization in torch
+
+Unlike L2, torch does not natively support L1 regularization via the optimizer. To implement L1, you must manually add the L1 penalty to the loss function:
+
+This penalty can be added to your loss during training:
+
+## Dropout in torch with brulee
+
+**Dropout** is another powerful regularization technique that prevents overfitting by randomly deactivating a subset of neurons during each training pass. This forces the network to not rely too heavily on any single neuron, promoting robustness.
+
+### How Dropout Works
+
+-   During **training**, each neuron is dropped (set to zero) with probability $p$.
+-   The remaining active neurons are scaled by $\frac{1}{1 - p}$ to maintain consistent expected outputs.
+-   During **inference**, no dropout is applied, and no scaling is necessary.
+
+### Inverted Dropout
+
+Modern frameworks (including torch and Keras) use **inverted dropout**, which handles scaling during training so that inference works without changes.
+
+**Training**: $$ x_{train} = \frac{z \cdot x}{1 - p} \quad \text{where } z \sim \text{Bernoulli}(1 - p) $$
+
+**Inference**: $$ x_{inference} = x \quad \text{(no dropout, no scaling)} $$
+
+This module can be passed to a `parsnip::mlp()` spec with `set_engine("brulee", model = mlp_dropout)`.

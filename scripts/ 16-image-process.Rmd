@@ -1,0 +1,67 @@
+---
+title: "Image Processing"
+author: "Will Doyle"
+date: "2025-04-01"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+```
+
+```{r}
+class<-read_csv("class_digits.csv")
+```
+
+
+```{r}
+
+plot_emnist_digit <- function(pixel_data) {
+  
+  print(paste("Displaying number", pixel_data$label))
+  
+  pixel_data<-pixel_data%>%select(-label)
+  # Ensure the pixel data has 784 elements
+  if (length(pixel_data) != 784) {
+    stop("Pixel data must contain 784 elements.")
+  }
+  
+  # Reshape pixel data into a 28x28 matrix
+  pixel_matrix <- t(matrix(pixel_data, nrow = 28, ncol = 28, byrow = TRUE))
+  
+  pixel_df <- as.data.frame(pixel_matrix) %>%
+    mutate(row = 1:28) %>%
+    pivot_longer(cols = -row, names_to = "col", values_to = "intensity") %>%
+    mutate(col = as.integer(gsub("V", "", col) ),
+           intensity=as.numeric(intensity))
+  
+  
+  ggplot(pixel_df, aes(x = col, y = row, fill = intensity)) +
+    geom_tile() +
+    scale_fill_gradient(low = "white", high = "black") +
+    scale_y_reverse() +  # Flip y-axis for correct orientation
+    theme_minimal() +
+    theme(
+      axis.title = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      panel.grid = element_blank(),
+  legend.position="none")
+}
+```
+
+```{r}
+class%>%slice(7)%>%
+  plot_emnist_digit()
+```
+
+
+```{r}
+load("final_nnet.Rdata")
+```
+
+```{r}
+class<-final_nnet%>%augment(class)
+```
+
