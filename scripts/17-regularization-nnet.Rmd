@@ -67,3 +67,47 @@ Modern frameworks (including torch and Keras) use **inverted dropout**, which ha
 **Inference**: $$ x_{inference} = x \quad \text{(no dropout, no scaling)} $$
 
 This module can be passed to a `parsnip::mlp()` spec with `set_engine("brulee", model = mlp_dropout)`.
+
+## Variable Importance
+Variable Importance in Neural Networks: Gradient-Based Methods
+
+When working with neural networks, it is often important to understand which input features contribute most to the model's predictions. Two primary approaches are commonly used to measure variable importance:
+
+Gradient-Based Methods (focus of these notes)
+
+Perturbation-Based Methods (e.g., SHAP, LIME)
+
+Perturbation based methods require refitting the model without features in order to understand the implications of removing a feature from the prediction. As such they are very computationally intensive. 
+
+This document focuses on gradient-based methods and their application in R using the tidymodels ecosystem.
+
+1. Gradient-Based Methods: Overview
+
+These methods assess how sensitive a model's prediction is to each input feature. The core idea is to compute partial derivatives of the output with respect to each input:
+
+If a small change in a feature leads to a large change in the prediction, the feature is considered important.
+
+Common Gradient-Based Variants
+
+Raw Gradients: Measure how much the output changes with respect to the input features.
+
+Input × Gradient: Multiplies the input feature by its gradient to incorporate feature magnitude.
+
+Integrated Gradients: Computes the average gradient along the path from a baseline input to the actual input.
+
+DeepLIFT: Compares neuron activations to a reference and distributes differences via modified backpropagation.
+
+2. Gradient-Based Importance in tidymodels
+
+Although tidymodels itself does not currently include built-in support for gradient-based importance, it can be integrated with torch models trained manually or via the torch and torchvision packages in R.
+
+Step-by-Step: Using Gradients for Feature Importance
+
+
+Interpreting Results
+
+Each value in importance corresponds to the sensitivity of the output to the respective input feature. Higher values suggest greater importance.
+
+
+
+
