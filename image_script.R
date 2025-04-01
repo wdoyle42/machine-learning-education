@@ -24,7 +24,7 @@ rasterize_image <- function(image_path, size = 28) {
 process_directory <- function(directory, output_file = "rasterized_labeled_images.csv") {
   files <- list.files(directory, pattern = "\\.jpe?g$", full.names = TRUE, ignore.case = TRUE)
   
-  # Extract label from filename (e.g., Smith_7.jpg → 7)
+  # Extract label from filename 
   extract_label <- function(path) {
     name <- basename(path)
     str_extract(name, "(?<=_)[0-9](?=\\.jpe?g$)")
@@ -47,7 +47,7 @@ process_directory <- function(directory, output_file = "rasterized_labeled_image
   # Save to CSV
   write.csv(image_df, output_file, row.names = FALSE)
   
-  message("Done! Saved labeled data to: ", output_file)
+  message("Saved labeled data to: ", output_file)
 }
 
 process_directory("./",output_file="class_digits.csv")
