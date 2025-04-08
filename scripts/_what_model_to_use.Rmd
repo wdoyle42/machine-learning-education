@@ -1,0 +1,62 @@
+---
+title: "Which Model to Use?"
+author: "Will Doyle"
+date: "2025-04-08"
+output: html_document
+---
+
+## Data Set Size
+
+Small: <2,000 cases
+
+Medium 2k-10k
+
+Else: >10k
+
+Small datasets:
+
+---Relatively few features: <50 
+
+Classification and Regression Tree
+
+Glmnet
+
+---Everything else
+
+Glmnet
+
+Medium Datasets
+
+Small Features, <50
+
+Class and Regress Tree
+
+Random Forests
+
+Large Features, >50
+
+Glmnet, (binary outcome =SVM)
+
+Large Datasets
+
+Outcome: Binary, Multinomial, Continuous
+
+Binary: SVM (features don't separate cleanly)
+        XGboost
+        
+Multinomial: MLP/Neural Net (large number (>10) classes)
+             Xgboost( large number of cases=very data hungry)
+             Glmnet/multionmial logit
+
+Continuous: Glmnet, Xgboost 
+
+Moderate/Severe missing data problem= Random Forests
+
+
+
+
+
+
+
+
+
