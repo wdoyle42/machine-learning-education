@@ -1,0 +1,339 @@
+---
+title: "Embeddings and Dense Neural Nets for Deep Learning"
+author: "Will Doyle"
+date: "2025-04-08"
+output: html_document
+---
+
+# Dense neural networks {#dldnn}
+
+```{r, include=FALSE}
+library(keras3)
+library(janitor)
+library(tidymodels)
+library(tidyverse)
+library(textrecipes)
+library(tidytext)
+library(textdata)
+library(tokenizers)
+library(textdata)
+```
+
+https://tensorflow.rstudio.com/install/
+
+Excerpted and Adapted from: https://smltar.com/dldnn#kickstarter
+
+
+```{r}
+ell <- read_csv("ELLIPSE_Final_github_train.csv")%>%
+  janitor::clean_names()
+
+ell<-ell%>%
+  select(full_text,overall)%>%
+  mutate(evaluation=case_when(
+    overall > 3 ~ 1,
+    TRUE ~ 0))%>%
+  select(-overall)
+```
+
+```{r}
+ell_split<-initial_split(ell)
+ell_train <- training(ell_split)
+ell_test <- testing(ell_split)
+```
+
+```{r}
+ell_train %>%
+  mutate(n_words = tokenizers::count_words(full_text)) %>%
+  ggplot(aes(n_words)) +
+  geom_bar() +
+  labs(x = "Number of words per essay",
+       y = "Number of texts")
+```
+
+
+```{r}
+max_words <- 2e4
+max_length <- 30
+
+ell_rec <- recipe(~ full_text, data = ell_train) %>%
+  step_tokenize(full_text) %>%
+  step_tokenfilter(full_text, max_tokens = max_words) %>%
+  step_sequence_onehot(full_text, sequence_length = max_length)
+
+ell_rec
+```
+
+
+
+### One-hot sequence embedding of text {#onehotsequence}
+
+
+The function `step_sequence_onehot()` transforms tokens into a numeric format appropriate for modeling, like `step_tf()` and `step_tfidf()`. However, it is different in that it takes into account the order of the tokens, unlike `step_tf()` and `step_tfidf()`, which do not take order into account. 
+
+```{block, type = "rmdnote"}
+Steps like `step_tf()` and `step_tfidf()` are used for approaches called "bag of words", meaning the words are treated like they are just thrown in a bag without attention paid to their order. 
+```
+
+Let's take a closer look at how `step_sequence_onehot()` works and how its parameters will change the output.
+
+When we use `step_sequence_onehot()`, two things happen. First, each word is assigned an\index{integer index} _integer index_. You can think of this as a key-value pair of the vocabulary. Next, the sequence of tokens is replaced with the corresponding indices; this sequence of integers makes up the final numeric representation. Let's illustrate with a small example:
+
+```{r sequence_onhot_rec}
+small_data <- tibble(
+  text = c("Adventure Dice Game",
+           "Spooky Dice Game",
+           "Illustrated Book of Monsters",
+           "Monsters, Ghosts, Goblins, Me, Myself and I")
+)
+
+small_spec <- recipe(~ text, data = small_data) %>%
+  step_tokenize(text) %>%
+  step_sequence_onehot(text, sequence_length = 6, prefix = "")
+
+prep(small_spec)
+```
+
+Once we have the prepped recipe, we can `tidy()` it to extract the vocabulary, represented in the `vocabulary` and `token` columns^[The `terms` column refers to the column we have applied `step_sequence_onehot()` to and `id` is its unique identifier. Note that **textrecipes** allows `step_sequence_onehot()` to be applied to multiple text variables independently, and they will have their own vocabularies.].
+
+```{r sequence_onhot_rec_vocab, dependson="sequence_onhot_rec"}
+prep(small_spec) %>%
+  tidy(2)
+```
+
+
+```{r }
+prep(small_spec) %>%
+  bake(new_data = NULL, composition = "matrix")
+
+
+#prep(small_spec) %>%
+#  bake(new_data = NULL, composition = "matrix")%>%View()
+
+```
+
+
+```{r}
+recipe(~ text, data = small_data) %>%
+  step_tokenize(text) %>%
+  step_sequence_onehot(text, sequence_length = 6, prefix = "",
+                       padding = "pre", truncating = "post") %>%
+  prep() %>%
+  bake(new_data = NULL, composition = "matrix")
+```
+
+```{r}
+recipe(~ text, data = small_data) %>%
+  step_tokenize(text) %>%
+  step_sequence_onehot(text, sequence_length = 6, prefix = "",
+                       padding = "post", truncating = "post") %>%
+  prep() %>%
+  bake(new_data = NULL, composition = "matrix")
+```
+
+
+
+```{r dependson="prepped_recipe"}
+ell_prep <-  prep(ell_rec)
+ell_prep_train <- bake(ell_prep, new_data = NULL, composition = "matrix")
+dim(ell_prep_train)
+```
+
+
+### Simple flattened dense network
+
+
+```{r dense_model}
+dense_model <- keras_model_sequential() %>%
+  layer_embedding(input_dim = max_words + 1,
+                  output_dim = 12,
+                  input_length = max_length) %>%
+  layer_flatten() %>%
+  layer_dense(units = 32, activation = "relu") %>%
+  layer_dense(units = 1, activation = "sigmoid")
+
+dense_model
+```
+
+Let us step through this model specification one layer at a time.
+
+- We initiate the Keras model by using `keras_model_sequential()` to indicate that we want to compose a linear stack of layers.
+
+- Our first `layer_embedding()` is equipped to handle the preprocessed data we have in `ell_train`. It will take each observation/row in `ell_train` and make dense vectors from our word sequences. This turns each observation into an `embedding_dim` $\times$ `sequence_length` matrix, 12 $\times$ 30 matrix in our case. In total, we will create a `number_of_observations` $\times$ `embedding_dim` $\times$ `sequence_length` data cube.
+
+- The next `layer_flatten()` layer takes the matrix for each observation and flattens them into one dimension. This will create a `30 * 12 = 360` long vector for each observation. 
+
+- Lastly, we have 2 densely connected layers. The last layer has a sigmoid activation function to give us an output between 0 and 1, since we want to model a probability for a binary classification problem.
+
+We still have a few things left to add to this model before we can fit it to the data. A Keras model requires an *optimizer*\index{optimization algorithm} and a *loss function* to be able to compile. 
+
+When the neural network finishes passing a batch of data through the network, it needs a way to use the difference between the predicted values and true values to update the network's weights. The algorithm that determines those weights is known as the optimization algorithm. Many optimizers are available within Keras itself^[https://keras.io/api/optimizers/]; you can even create custom optimizers if what you need isn't on the list. We will start by using the Adam optimizer, a good default optimizer for many problems.
+
+
+During training of a neural network, there must be some quantity that we want to have minimized; this is called the loss function. Again, many loss functions are available within Keras^[https://keras.io/api/losses/]. These loss functions typically have two arguments, the true value and the predicted value, and return a measure of how close they are. 
+Since we are working on a binary classification task and the final layer of the network returns a probability, binary cross-entropy\index{binary cross-entropy} is an appropriate loss function. Binary cross-entropy does well at dealing with probabilities because it measures the "distance" between probability distributions. In our case, this would be the ground-truth distribution and the predictions.
+
+
+
+Let's set these three options (`optimizer`, `loss`, and `metrics`) using the `compile()` function:
+
+```{r dense_model_compiled}
+dense_model %>% compile(
+  optimizer = "adam",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+```
+
+```{block, type = "rmdnote"}
+Notice how the `compile()` function modifies the model _in place_. This is different from how objects are conventionally handled in R so be vigilant about model definition and modification in your code. This is a [conscious decision](https://keras.rstudio.com/articles/faq.html#why-are-keras-objects-modified-in-place-) that was made when creating the **keras** R package to match the data structures and behavior of the underlying Keras library.
+```
+
+Finally, we can fit this model! We need to supply the data for training as a matrix of predictors `x` and a numeric vector of labels `y`.
+This is sufficient information to get started training the model, but we are going to specify a few more arguments to get better control of the training loop. First, we set the number of observations to pass through at a time with `batch_size`, and we set `epochs = 20` to tell the model to pass all the training data through the training loop 20 times. Lastly, we set `validation_split = 0.25` to specify an internal validation split; this will keep 25% of the data for validation.
+
+```{r dense_model_history}
+dense_history <- dense_model %>%
+  fit(
+    x = ell_prep_train,
+    y = ell_train$evaluation,
+    batch_size = 512,
+    epochs = 20,
+    validation_split = 0.25,
+    verbose = FALSE
+  )
+```
+
+
+We can visualize the results of the training loop by plotting the `dense_history` in Figure \@ref(fig:densemodelhistoryplot).
+
+```{r densemodelhistoryplot, fig.cap="Training and validation metrics for dense network"}
+plot(dense_history)
+```
+
+```{block, type = "rmdnote"}
+We have dealt with accuracy in other chapters; remember that a higher value (a value near one) is better. Loss is new in these deep learning chapters, and a lower value is better.
+```
+
+The loss and accuracy both improve with more training epochs on the training data; this dense network more and more closely learns the characteristics of the training data as its trains longer. The same is not true of the validation data, the held-out 25% specified by `validation_split = 0.25`. The performance is worse on the validation data than the testing data, and _degrades_ somewhat as training continues. If we wanted to use this model, we would want to only train it about 7 or 8 epochs.
+
+### Evaluation {#evaluate-dnn}
+
+For our first deep learning model, we used the Keras defaults for creating a validation split and tracking metrics, but we can use tidymodels functions to be more specific about these model characteristics. Instead of using the `validation_split` argument to `fit()`, we can create our own validation set using tidymodels and use `validation_data` argument for `fit()`. We create our validation split from the _training_ set.
+
+```{r}
+ell_val <- validation_split(ell_train, strata = evaluation)
+ell_val
+```
+
+The `split` object contains the information necessary to extract the data we will use for training/analysis and the data we will use for validation/assessment. We can extract these data sets in their raw, unprocessed form from the split using the helper functions `analysis()` and `assessment()`. Then, we can apply our prepped preprocessing recipe `kick_prep` to both to transform this data to the appropriate format for our neural network architecture.
+
+```{r}
+ell_analysis <- bake(ell_prep, new_data = analysis(ell_val$splits[[1]]),
+                      composition = "matrix")
+dim(ell_analysis)
+
+ell_assess <- bake(ell_prep, new_data = assessment(ell_val$splits[[1]]),
+                    composition = "matrix")
+dim(ell_assess)
+```
+
+These are each matrices now appropriate for a deep learning model like the one we trained in the previous section. We will also need the outcome variables for both sets.
+
+```{r}
+evaluation_analysis <- analysis(ell_val$splits[[1]]) %>% pull(evaluation)
+evaluation_assess <- assessment(ell_val$splits[[1]]) %>% pull(evaluation)
+```
+
+Let's set up our same dense neural network architecture. 
+
+```{r dense_model2}
+dense_model <- keras_model_sequential() %>%
+  layer_embedding(input_dim = max_words + 1,
+                  output_dim = 12,
+                  input_length = max_length) %>%
+  layer_flatten() %>%
+  layer_dense(units = 32, activation = "relu") %>%
+  layer_dense(units = 1, activation = "sigmoid")
+
+dense_model %>% compile(
+  optimizer = "adam",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+```
+
+Now we can fit this model to `kick_analysis` and validate on `kick_assess`. Let's only fit for 10 epochs this time.
+
+```{r val_history}
+val_history <- dense_model %>%
+  fit(
+    x = ell_analysis,
+    y = evaluation_analysis,
+    batch_size = 512,
+    epochs = 10,
+    validation_data = list(ell_assess, evaluation_assess),
+    verbose = FALSE
+  )
+
+val_history
+```
+
+
+
+```{r}
+plot(val_history)
+```
+
+
+
+```{r}
+
+keras_predict <- function(model, baked_data, response) {
+  predictions <- predict(model, baked_data)[, 1]
+  tibble(
+    .pred_1 = predictions,
+    .pred_class = if_else(.pred_1 < 0.5, 0, 1),
+    evaluation = response
+  ) %>%
+    mutate(across(c(evaluation, .pred_class),            ## create factors
+                  ~ factor(.x, levels = c(1, 0))))  ## with matching levels
+}
+```
+
+
+
+```{r}
+val_res <- keras_predict(dense_model, ell_assess, evaluation_assess)
+val_res
+```
+
+We can calculate the standard metrics with `metrics()`.
+
+```{r}
+metrics(val_res, evaluation, .pred_class)
+```
+
+This matches what we saw when we looked at the output of `val_history`. 
+
+Since we have access to tidymodels' full capacity for model evaluation, we can also compute confusion matrices and ROC curves.
+The heatmap in Figure  shows that there isn't any dramatic bias in how the model performs for the two classes, success and failure for the crowdfunding campaigns. The model certainly isn't perfect; its accuracy is a little over `r scales::percent((floor(100 * accuracy(val_res, state, .pred_class)$.estimate) / 100))`, but at least it is more or less evenly good at predicting both classes.
+
+```{r}
+val_res %>%
+  conf_mat(evaluation, .pred_class) %>%
+  autoplot(type = "heatmap")
+```
+
+The ROC curve in Figure \@ref(fig:dnnroccurve) shows how the model performs at different thresholds.
+
+```{r}
+val_res %>%
+  roc_curve(truth = evaluation, .pred_1) %>%
+  autoplot() +
+  labs(
+    title = "Receiver operator curve for Assessments"
+  )
+```
+
+
