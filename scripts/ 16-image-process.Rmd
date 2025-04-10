@@ -51,6 +51,7 @@ plot_emnist_digit <- function(pixel_data) {
 }
 ```
 
+
 ```{r}
 class%>%slice(7)%>%
   plot_emnist_digit()

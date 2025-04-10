@@ -8,12 +8,19 @@ output: html_document
 ### Cribbed Shamelessly from: https://juliasilge.com/blog/animal-crossing/
 
 ```{r}
+library(tidytext)
 library(tidyverse)
 library(tidymodels)
-library(tidytext)
 library(textrecipes)
 library(vip)
 ```
+
+```{r}
+data("stop_words")
+
+stop_words%>%print(n=200)
+```
+
 
 ```{r}
 user_reviews <- readr::read_tsv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-05-05/user_reviews.tsv")
@@ -32,12 +39,7 @@ user_reviews %>%
   pull(text)
 ```
 
-```{r}
-user_reviews %>%
-  filter(grade > 8) %>%
-  sample_n(5) %>%
-  pull(text)
-```
+
 
 ```{r}
 reviews_parsed <- user_reviews %>%
@@ -72,6 +74,7 @@ review_rec <- recipe(rating ~ text, data = review_train) %>%
   step_tokenfilter(text, max_tokens = 500) %>%
   step_tfidf(text) %>%
   step_normalize(all_predictors())
+
 ```
 
 ```{r}
