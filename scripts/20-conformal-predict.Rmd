@@ -1,0 +1,284 @@
+---
+title: "Cross Conformal Prediction"
+author: "Will Doyle"
+date: "2025-01-09"
+output: github_document
+---
+
+See: https://www.tidymodels.org/learn/models/conformal-regression/
+
+Rina Foygel Barber, Emmanuel J. Candès, Aaditya Ramdas, Ryan J. Tibshirani "Predictive inference with the jackknife+," The Annals of Statistics, 49(1), 486-507, 2021
+
+https://www.stat.berkeley.edu/~ryantibs/statlearn-s23/lectures/conformal.pdf
+
+
+$$
+\text{Minimize: } \underbrace{\frac{1}{2n} \sum_{i=1}^n (y_i - \hat{y}_i)^2}_{\text{OLS loss}} + \lambda \left( \underbrace{\frac{1-\alpha}{2} \sum_{j=1}^p \beta_j^2}_{\text{L2 penalty}} + \underbrace{\alpha \sum_{j=1}^p |\beta_j|}_{\text{L1 penalty}} \right)
+$$
+
+-   $\lambda$ (penalty): Controls the **overall strength** of regularization. Larger $\lambda$ shrinks coefficients more aggressively.
+-   $\alpha$ (mixture): Determines the **blend** between L1 and L2 penalties:
+    -   $\alpha = 0$: Pure Ridge (L2 penalty only)
+    -   $\alpha = 1$: Pure Lasso (L1 penalty only)
+    -   $0 < \alpha < 1$: Elastic Net (mix of both penalties).
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(probably)
+```
+
+## Load dataset
+
+```{r}
+hs<-read_csv("hsls_extract.csv")%>%clean_names()
+```
+
+## Data Cleaning
+
+```{r}
+hs <- hs %>%
+  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+  drop_na()
+```
+
+```{r}
+hs_split<-initial_split(hs)
+
+hs_train<-training(hs_split)
+
+hs_test<-testing(hs_split)
+```
+
+## Recipe
+
+```{r}
+hs_formula<-as.formula("x3tgpatot~.")
+
+hs_rec<-recipe(hs_formula,data=hs_train)%>%
+  update_role(x3tgpatot,new_role = "outcome")%>%
+  step_other(all_nominal_predictors(),threshold = .01)%>%
+  step_dummy(all_nominal_predictors())%>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+```
+
+In tidymodels, elastic net is set using two paramters. Penalty sets $\lambda$ while mixture sets $\alpha$ in the above notation. Below, we'll just set these as two values that need to be tuned.
+
+```{r}
+hs_tune_model<- 
+  linear_reg(penalty=tune(),mixture=tune())%>% 
+  set_engine("glmnet")
+```
+
+We can use tidymodels defaults to set values for penalty and mixture. Note how penalty goes on a log scale, while mixture just goes through the steps from 0 to 1 in a sensible manner.
+
+```{r}
+enet_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model) ,levels=10)
+```
+
+```{r}
+hs_rs<-vfold_cv(hs_train,v = 20) 
+```
+
+Set the workflow, as usual.
+
+```{r}
+hs_wf<-workflow()%>%
+  add_model(hs_tune_model)%>%
+  add_recipe(hs_rec)
+```
+
+Then we can use `tune_grid` to run the model through the resampled data, using the grid supplied.
+
+```{r}
+hs_enet_tune_fit <- 
+  hs_wf %>%
+    tune_grid(hs_rs,grid=enet_grid)
+```
+
+
+## Selecting best parameters
+
+Our workflow will be much the same as last time once we've identified the best parameters. The `select_best` will pull the values from the tuning process with best mean rmse.
+
+```{r}
+best_params<-select_best(hs_enet_tune_fit)
+```
+
+## Finalizing the workflow
+
+We can then take those best parameters and plug them in as the values to be used in fitting to the full training data.
+
+```{r}
+final_enet_workflow <- hs_wf %>%
+  finalize_workflow(best_params)
+```
+
+
+## Fitting to the full training data
+
+And finally we can fit the model to get the values for the coefficients.
+
+
+```{r}
+ctrl <- control_resamples(save_pred = TRUE, extract = I)
+
+final_rs_model<-final_enet_workflow%>%
+  fit_resamples(hs_rs,control=ctrl)
+
+```
+
+
+```{r}
+cv_int <- int_conformal_cv(final_rs_model)
+```
+
+
+```{r}
+test_cv_res_enet <- 
+  predict(cv_int, hs_test, level = 0.90) %>% 
+  bind_cols(hs_test)
+```
+
+```{r}
+coverage <- function(x) {
+  x %>% 
+    mutate(in_bound = .pred_lower <= y & .pred_upper >= y) %>% 
+    summarise(coverage = mean(in_bound) * 100)
+}
+```
+
+```{r}
+test_cv_res_enet$y<-test_cv_res_enet$x3tgpatot
+coverage(test_cv_res_enet)
+```
+
+
+```{r}
+## Without conformal interval
+  ggplot(test_cv_res_enet)+
+  geom_point(aes(x=x3tgpatot,y=.pred),color="blue",alpha=.1)
+
+## With Conformal Interval
+  ggplot(test_cv_res_enet)+
+  geom_point(aes(x=x3tgpatot,y=.pred),color="blue",alpha=.1,size=.5)+
+  geom_point(aes(x=x3tgpatot,y=.pred_lower),color="red",alpha=.1,size=.5)+
+   geom_point(aes(x=x3tgpatot,y=.pred_upper),color="red",alpha=.1,size=.5)
+```
+
+
+```{r}
+final_model <- final_enet_workflow %>%
+  fit(data = hs_train)
+```
+
+```{r}
+last_fit_enet<-last_fit(final_enet_workflow,hs_split)
+
+collect_metrics(last_fit_enet)
+
+```
+
+
+## XGBOOST
+
+```{r}
+xgb_spec <- boost_tree(
+  trees = 100, 
+  tree_depth = tune(), 
+  min_n = tune(),
+  loss_reduction = tune(), ## first three: model complexity
+  sample_size = tune(), 
+  mtry = tune(),         ## randomness
+  learn_rate = tune() ## step size
+) %>%
+  set_engine("xgboost") %>%
+  set_mode("regression")
+```
+
+```{r}
+xgb_grid <- grid_space_filling(
+  tree_depth(),
+  min_n(),
+  loss_reduction(), 
+  sample_size = sample_prop(),
+  finalize(mtry(), hs_train),
+  learn_rate(),
+  size = 30
+)
+```
+
+```{r}
+hs_xg_wf <- workflow() %>%
+  add_recipe(hs_rec) %>%
+  add_model(xgb_spec)
+```
+
+```{r}
+fit_model<-FALSE
+
+if(fit_model){
+xg_hs_tune_res <- tune_grid(
+  hs_xg_wf,
+  grid=xgb_grid,
+  resamples = hs_rs,
+)
+save(xg_hs_tune_res,file="xg_hs_tune_res.Rdata")
+} else{
+  load("xg_hs_tune_res.Rdata")
+}
+```
+
+```{r}
+best_param<- select_best(xg_hs_tune_res,metric =  "rmse")
+```
+
+
+```{r}
+final_xg_workflow <- hs_xg_wf %>%
+  finalize_workflow(best_param)
+```
+
+```{r}
+final_rs_xg_model<-final_xg_workflow%>%
+  fit_resamples(hs_rs,control=ctrl)
+```
+
+
+```{r}
+cv_int <- int_conformal_cv(final_rs_model)
+```
+
+```{r}
+test_cv_res_xg <- 
+  predict(cv_int, hs_test, level = 0.90) %>% 
+  bind_cols(hs_test)
+```
+
+
+```{r}
+test_cv_res_xg$y<-test_cv_res_xg$x3tgpatot
+coverage(test_cv_res_xg)
+```
+
+
+```{r}
+## Without conformal interval
+  ggplot(test_cv_res_enet)+
+  geom_point(aes(x=x3tgpatot,y=.pred),color="blue",alpha=.1)
+
+## With Conformal Interval
+  ggplot(test_cv_res_enet)+
+  geom_point(aes(x=x3tgpatot,y=.pred),color="blue",alpha=.1,size=.5)+
+  geom_point(aes(x=x3tgpatot,y=.pred_lower),color="red",alpha=.1,size=.5)+
+   geom_point(aes(x=x3tgpatot,y=.pred_upper),color="red",alpha=.1,size=.5)
+```
+
+```{r}
+last_fit_xg<-last_fit(final_xg_workflow,hs_split)
+
+collect_metrics(last_fit_xg)
+```
+
