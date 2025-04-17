@@ -1,0 +1,15 @@
+---
+title: "Working with templates"
+author: "Will Doyle"
+date: "2025-04-15"
+output: html_document
+---
+
+```{r}
+library(stevetemplates)
+```
+
+```{r}
+article3()
+```
+

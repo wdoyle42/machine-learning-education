@@ -1,0 +1,18 @@
+---
+title: "Rubric for Final Paper"
+author: "Will Doyle"
+date: "2025-04-17"
+output: github_document
+---
+
+# Paper Evaluation Rubric
+
+| Category                     | Excellent                                                                  | Good                                                                      | Satisfactory                                                               | Needs Improvement                                                                  |
+|-----------------------------|------------------------------------------------------------------------------|-----------------------------------------------------------------------------|--------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| ** Explanation & Description** | Clearly and concisely explains the problem, motivation, data source, and use cases. Demonstrates deep understanding of the context and relevance. | Problem and context are mostly clear; some minor gaps in motivation or description. | Basic explanation provided but lacks depth or clarity in one or more key areas. | Incomplete or confusing explanation of problem, data, or use cases. Context is unclear or missing. |
+| ** Analysis**             | Thorough and thoughtful analysis of outcome and predictors; effective model selection and tuning; interpretation of results is insightful and grounded. | Adequate analysis and interpretation with minor weaknesses; reasonable model tuning and validation. | Analysis is present but superficial; minimal attention to tuning or interpretation. | Major components of the analysis are missing or flawed. Poor model justification or performance evaluation. |
+| ** Clarity of Presentation** | Logical structure; effective use of figures/tables; writing is polished and professional; results and implications are clearly communicated. | Mostly well-organized and clear; visuals support analysis; some minor writing issues. | Organization is uneven; some unclear writing or ineffective figures/tables. | Paper is difficult to follow; poor organization, unclear writing, or missing/irrelevant visuals. |
+
+
+
+
