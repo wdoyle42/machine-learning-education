@@ -7,7 +7,7 @@ output:
 
 # LPO 7500
 
-# Spring 2025
+# Spring 2026
 
 ## Will Doyle
 
@@ -24,6 +24,29 @@ The focus will be pragmatic, with an emphasis on how various models
 are tuned in order to best provide out-of-sample predictions with the lowest
 loss rates. Learners will know how to train and deploy some widely-used models
 after taking the course. 
+
+The course is organized as follows: 
+
+1. Understanding the Machine Learning Workflow
+  - Splitting data for training and testing
+  - Structuring training data for validation
+  - Hyperparameter tuning
+  - Choosing best fit model
+  - Deploying model to accept incoming data
+2. Regularization: LASSO, Ridge, Elastic Net
+3. Support Vector Machines
+4. Tree-based models
+    - Classification and Regression Trees
+    - Random Forests
+    - XGBoost
+5. Neural Networks 
+
+  - Neural Network Concepts and Architecture
+  - Backpropagation
+  - Activation functions
+  - Measuring Model fit via cross entropy
+  - Cross validation and choosing hyperparameters
+  - Applications   
 
 ## Evaluation
 
@@ -119,7 +142,6 @@ TMWR Chs. 1,2, 3
 
 - A complete workflow
 
-
 TMWR Chs. 4-8
 
 ISLR Ch. 5
@@ -136,24 +158,6 @@ ISLR ch. 10
 
 TMWR Ch. 14
 
-### Tree-Based Methods
-
-- Classification and Regression Trees (CART)
-
-- Random Forests
-
-- Understanding hyperparameters in Random Forests
-
-- Fitting and Tuning Parameters
-
-- Prediction from trained models
-
-ISLR 8
-
-CS 229 Notes on Decision Trees
-
-
-TMWR 10.1
 
 ### Support Vector Machines
 
@@ -171,13 +175,34 @@ CS 229 6
 
 TMWR 14.1
 
+
+### Tree-Based Methods
+
+- Classification and Regression Trees (CART)
+
+- Random Forests
+
+- Understanding hyperparameters in Random Forests
+
+- Fitting and Tuning Parameters
+
+- Prediction from trained models
+
+- XGBoost 
+
+ISLR 8
+
+CS 229 Notes on Decision Trees
+
+TMWR 10.1
+
 ### Neural Networks
 
 ISLR  10
 
 CS 229 7
 
-- Neural Network Concepts
+- Neural Network Concepts and Architecture
 
 - Backpropagation
 
@@ -188,7 +213,6 @@ CS 229 7
 - Cross validation and choosing hyperparameters
 
 - Applications
-
 
 ## Assignments
 

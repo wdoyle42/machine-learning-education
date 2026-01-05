@@ -69,15 +69,13 @@ Will Doyle
 
 ## Characteristics of Final Model
 
-- Variable importance plot or table (e.g., SHAP values, permutation
-  importance).
+- Variable importance plot or table
 - Selected hyperparameters and rationale.
 - Parsimony vs. complexity tradeoff (e.g., how many features matter?).
 
-## Prediction Intervals
+## Prediction Intervals (optional)
 
-- Method used for constructing intervals (e.g., conformal prediction,
-  quantile regression).
+- Method used for constructing intervals (e.g., conformal prediction).
 - Width and calibration of intervals on test data.
 - Use case relevance: when are intervals more useful than point
   predictions?

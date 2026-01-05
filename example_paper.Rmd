@@ -28,6 +28,7 @@ alternate-layout: TRUE
 remove-emails: FALSE
 remove-paper-info: FALSE
 n-author: TRUE
+bibliography: mybib.bib
 paper-info:
   - "*Last updated*: `r format(Sys.time(), '%e %B %Y')`"
   - "*Word Count*: 10,000 (pinky swear)"
@@ -47,13 +48,16 @@ knitr::opts_chunk$set(echo=FALSE,message=FALSE,warning=FALSE,results=FALSE)
 # Add `chunkcaption: TRUE` to YAML as well.
 ```
 
-
-
 # Introduction
 
 \kant[1]
 
 ## A Subsection in the Introduction
+
+We cite Scott Crossley [@crossley2023english].
+
+I will also cite my dean 
+[@benbow1986physiological]. 
 
 \kant[2]
 
