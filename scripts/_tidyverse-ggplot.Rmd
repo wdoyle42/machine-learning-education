@@ -1,7 +1,7 @@
 ---
 title: "Quick intro to tidyverse/ggplot"
 author: "Will Doyle"
-date: "2025-01-09"
+date: "2026-01-06"
 output: github_document
 ---
 
@@ -82,16 +82,14 @@ The `summarize` command "collapses" the data, using the operator supplied, in th
 ```{r}
 hs%>%
 ggplot(aes(x=x3tgpatot))+
-  geom_hist()
+  geom_histogram()
 ```
 
-GGPlot stands for grammer of graphics. The basic idea is that a graphic consistes of elements that are mapped onto a geometry via an aesthetic (eg x and y variables mapped onto a scatterplot). A description is here: https://ggplot2.tidyverse.org/
-
+GGPlot stands for grammer of graphics. The basic idea is that a graphic consistes of elements that are mapped onto a geometry via an aesthetic (eg x and y variables mapped onto a scatterplot). A description is here: https://ggplot2.tidyverse.org/. The above code starts with the hs dataset, creates a ggplot object with a single variable (GPA) and then adds a histogram geometry to the existing ggplot object, using the `+` as a conjuction. 
 
 ## Outcome variable as a function of independent variable
 
 Below, I use a tidyverse approach and then a ggplot approach to show average GPA by levels of parental income. 
-
 
 ## Table
 ```{r}
@@ -102,8 +100,26 @@ hs%>%
   rename(`Parental Education`=x1par1edu)
 ```
 
+A good way to read these is to use the phrase "and then" for every pipe operator. 
+
+So, 
+
+start with the `hs` dataset and then . . .
+
+` group_by(x1par1edu)%>%` group all output by the parental education variable `x1par1edu` and then . . .
+
+`summarize(`Mean GPA`=mean(x3tgpatot))` use the summarize command to create a 
+new dataset with a variable called "Mean GPA" that will be equal to the mean of the variable `x3gpatot` and then . . .  
+ 
+`arrange(`Mean GPA`)%>%` arrange the resulting dataset in ascending order (the default) of the new variable `Mean GPA`  and then  . . .
+
+  rename(`Parental Education`=x1par1edu) rename the variable `x1par1edu` to be "Parental Education." 
+
 
 ## Graphic
+
+We can use the dataset created and then pass that on to `ggplot`
+
 ```{r}
 hs%>%
   group_by(x1par1edu)%>%
@@ -116,4 +132,5 @@ hs%>%
   theme(legend.position="bottom")
 ```
 
+The `geom_col` geometry adds a column plot, while the `coord_flip` turns it sideways. The overall theme is set by `theme_minimal` while the theme is then tweaked by `theme(legend.position="bottom")`, which as you might have guessed places the legend at the bottom.  
 

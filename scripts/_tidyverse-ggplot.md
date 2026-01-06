@@ -1,7 +1,7 @@
 Quick intro to tidyverse/ggplot
 ================
 Will Doyle
-2025-01-09
+2026-01-06
 
 ## Tidyverse/GGPlot
 
@@ -13,10 +13,10 @@ library(tidyverse)
 
     ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
     ## ✔ dplyr     1.1.4     ✔ readr     2.1.5
-    ## ✔ forcats   1.0.0     ✔ stringr   1.5.1
-    ## ✔ ggplot2   3.5.1     ✔ tibble    3.2.1
-    ## ✔ lubridate 1.9.3     ✔ tidyr     1.3.1
-    ## ✔ purrr     1.0.2     
+    ## ✔ forcats   1.0.0     ✔ stringr   1.6.0
+    ## ✔ ggplot2   4.0.0     ✔ tibble    3.3.0
+    ## ✔ lubridate 1.9.4     ✔ tidyr     1.3.1
+    ## ✔ purrr     1.1.0     
     ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
     ## ✖ dplyr::filter() masks stats::filter()
     ## ✖ dplyr::lag()    masks stats::lag()
@@ -26,13 +26,13 @@ library(tidyverse)
 library(tidymodels)
 ```
 
-    ## ── Attaching packages ────────────────────────────────────── tidymodels 1.2.0 ──
-    ## ✔ broom        1.0.6     ✔ rsample      1.2.1
-    ## ✔ dials        1.3.0     ✔ tune         1.2.1
-    ## ✔ infer        1.0.7     ✔ workflows    1.1.4
-    ## ✔ modeldata    1.4.0     ✔ workflowsets 1.1.0
-    ## ✔ parsnip      1.2.1     ✔ yardstick    1.3.1
-    ## ✔ recipes      1.1.0     
+    ## ── Attaching packages ────────────────────────────────────── tidymodels 1.4.1 ──
+    ## ✔ broom        1.0.10     ✔ rsample      1.3.1 
+    ## ✔ dials        1.4.2      ✔ tailor       0.1.0 
+    ## ✔ infer        1.0.9      ✔ tune         2.0.1 
+    ## ✔ modeldata    1.5.1      ✔ workflows    1.3.0 
+    ## ✔ parsnip      1.3.3      ✔ workflowsets 1.1.1 
+    ## ✔ recipes      1.3.1      ✔ yardstick    1.3.2 
     ## ── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
     ## ✖ scales::discard() masks purrr::discard()
     ## ✖ dplyr::filter()   masks stats::filter()
@@ -40,7 +40,6 @@ library(tidymodels)
     ## ✖ dplyr::lag()      masks stats::lag()
     ## ✖ yardstick::spec() masks readr::spec()
     ## ✖ recipes::step()   masks stats::step()
-    ## • Use tidymodels_prefer() to resolve common conflicts.
 
 ``` r
 library(janitor)
@@ -146,14 +145,17 @@ ggplot(aes(x=x3tgpatot))+
   geom_histogram()
 ```
 
-    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+    ## `stat_bin()` using `bins = 30`. Pick better value `binwidth`.
 
 ![](_tidyverse-ggplot_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
 GGPlot stands for grammer of graphics. The basic idea is that a graphic
 consistes of elements that are mapped onto a geometry via an aesthetic
 (eg x and y variables mapped onto a scatterplot). A description is here:
-<https://ggplot2.tidyverse.org/>
+<https://ggplot2.tidyverse.org/>. The above code starts with the hs
+dataset, creates a ggplot object with a single variable (GPA) and then
+adds a histogram geometry to the existing ggplot object, using the `+`
+as a conjuction.
 
 ## Outcome variable as a function of independent variable
 
@@ -181,7 +183,29 @@ hs%>%
     ## 6 Master's degree                               3.34
     ## 7 Ph.D/M.D/Law/other high lvl prof degree       3.42
 
+A good way to read these is to use the phrase “and then” for every pipe
+operator.
+
+So,
+
+start with the `hs` dataset and then . . .
+
+`group_by(x1par1edu)%>%` group all output by the parental education
+variable `x1par1edu` and then . . .
+
+`summarize(`Mean GPA`=mean(x3tgpatot))` use the summarize command to
+create a new dataset with a variable called “Mean GPA” that will be
+equal to the mean of the variable `x3gpatot` and then . . .
+
+`arrange(`Mean GPA`)%>%` arrange the resulting dataset in ascending
+order (the default) of the new variable `Mean GPA` and then . . .
+
+rename(`Parental Education`=x1par1edu) rename the variable `x1par1edu`
+to be “Parental Education.”
+
 ## Graphic
+
+We can use the dataset created and then pass that on to `ggplot`
 
 ``` r
 hs%>%
@@ -196,3 +220,8 @@ hs%>%
 ```
 
 ![](_tidyverse-ggplot_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+The `geom_col` geometry adds a column plot, while the `coord_flip` turns
+it sideways. The overall theme is set by `theme_minimal` while the theme
+is then tweaked by `theme(legend.position="bottom")`, which as you might
+have guessed places the legend at the bottom.
