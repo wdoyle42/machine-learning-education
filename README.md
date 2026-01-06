@@ -1,7 +1,6 @@
 ---
 output:
   pdf_document: default
-  html_document: default
 ---
 # Machine Learning in Education
 
