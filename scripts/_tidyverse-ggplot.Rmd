@@ -7,7 +7,6 @@ output: github_document
 
 ## Tidyverse/GGPlot
 
-
 ## Load libraries
 
 ```{r}
@@ -114,7 +113,6 @@ new dataset with a variable called "Mean GPA" that will be equal to the mean of 
 `arrange(`Mean GPA`)%>%` arrange the resulting dataset in ascending order (the default) of the new variable `Mean GPA`  and then  . . .
 
   rename(`Parental Education`=x1par1edu) rename the variable `x1par1edu` to be "Parental Education." 
-
 
 ## Graphic
 

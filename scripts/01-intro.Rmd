@@ -2,7 +2,7 @@
 title: "Introduction to Tidyverse/Tidymodels"
 author: "Will Doyle"
 date: "2026-01-08"
-output: pdf_document
+output: github_document
 ---
 
 ## Datset
@@ -36,16 +36,27 @@ hs<-read_csv("hsls_extract.csv")%>%clean_names()
 Categorical/factor variables marked with (f)
 
 x3gpatot: Final HS GPA
+
 x1region: Region of the country (f)
+
 x1locale: Locale (f)
+
 x1control: Control (f)
+
 x1iepflag: IEP Flag (f)
+
 x1stuedexpct: Student expectations for educational attainment (f)
-x1schooleng: Student engagement
+
+x1schooleng: Student engagement 
+
 x1famincome: Family income (f)
+
 x1hhnumber: Number in household (f)
+
 x1par1emp: Parent's employment status (f)
+
 x1par1edu: Parent's education level (f)
+
 x1tmtscor: Math theta score in ninth grade
 
 ## Data Cleaning
@@ -153,11 +164,11 @@ hs_model<-linear_reg(mode="regression",engine="lm")
   
   - **`engine="lm"`**: This argument specifies the computational engine to use for the linear regression. The "lm" engine refers to R's built-in `lm()` function for linear modeling.
 
-- **`hs_model`**: The specified linear regression model is then stored in the `hs_model` variable. This doesn't train the model yet; it merely sets up the type of model and the engine to be used. Training the model would require additional steps using the training data.
+- **`hs_model`**: The specified linear regression model is then stored in the `hs_model` variable. This doesn't train the model yet. It sets up the type of model and the engine to be used. Training the model would require additional steps using the training data.
 
 ## Set Recipe
 
-In the tidymodels framework, recipes is a package that provides a streamlined way to define and preprocess data for modeling. It allows users to specify a series of steps to transform and preprocess data, such as normalization, encoding categorical variables, and handling missing values. These steps are defined in a consistent and reproducible manner, creating a "recipe" that can be applied to both training and new datasets. This ensures that data transformations are consistent across different stages of the modeling process, facilitating more reliable model training and prediction. Essentially, recipes offers a tidy and systematic approach to data preparation in the modeling workflow.
+In the tidymodels framework, recipes is a package that provides a streamlined way to define and preprocess data for modeling. It allows users to specify a series of steps to transform and preprocess data, such as normalization, encoding categorical variables, and handling missing values. These steps are defined in a consistent and reproducible manner, creating a "recipe" that can be applied to multiple datasets. This ensures that data transformations are consistent across different stages of the modeling process, which makes model training and validation much easier. Essentially, `recipes` offers a tidy and systematic approach to data preparation in the modeling workflow.
 
 The code below is preparing the data for modeling. It sets up a series of steps to process the data, such as handling missing values, converting categorical variables into a format suitable for modeling, and normalizing the data.
 
@@ -275,11 +286,14 @@ The result is stored in `hs_wf`. This object now contains the trained model alon
 
 ```{r}
 test<-
-  hs_wf%>%
-  predict(new_data=test)%>%
-  bind_cols(test)
+  augment(hs_wf, new_data = test)
 ```
 
+Using `augment()` with the fitted workflow `hs_wf` appends predictions to the test data. Under the hood, it first applies the trained recipe to test (the same preprocessing learned from `train`), then uses the fitted model inside `hs_wf` to generate predicted GPA values, which are returned in a `.pred` column (for regression).
+
+For a linear model, you can think of this as computing 
+
+$$ \hat{y}=X_i\beta$$
 
 ```{r}
 test%>%
@@ -347,6 +361,29 @@ hs_wf_full%>%
 5. **`print(n=100)`**:
 
    - This displays the top 100 results after sorting. It's especially useful if there are many predictor variables in the model and you want to see the ones with the highest coefficient values.
+
+We can also plot the results: 
+
+```{r}
+hs_wf_full %>%
+  extract_fit_parsnip() %>%
+  tidy(conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(abs_est = abs(estimate)) %>%
+  arrange(desc(abs_est)) %>%
+  slice(1:10) %>%
+  transmute(
+    term,
+    Coefficient = estimate,
+    conf.low=estimate-(1.96*std.error),
+    conf.high=estimate+(1.96*std.error)
+  ) %>%
+  mutate(term = fct_reorder(term, Coefficient)) %>%
+  ggplot(aes(y = term, x = Coefficient)) +
+  geom_vline(xintercept = 0, linewidth = 0.4) +
+  geom_point(size = 2, color="blue") +
+  theme_minimal()
+```
 
 
 ## Moving forward

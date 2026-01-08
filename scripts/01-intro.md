@@ -1,7 +1,7 @@
 Introduction to Tidyverse/Tidymodels
 ================
 Will Doyle
-2025-01-07
+2026-01-08
 
 ## Datset
 
@@ -28,10 +28,10 @@ library(tidyverse)
 
     ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
     ## ✔ dplyr     1.1.4     ✔ readr     2.1.5
-    ## ✔ forcats   1.0.0     ✔ stringr   1.5.1
-    ## ✔ ggplot2   3.5.1     ✔ tibble    3.2.1
-    ## ✔ lubridate 1.9.3     ✔ tidyr     1.3.1
-    ## ✔ purrr     1.0.2     
+    ## ✔ forcats   1.0.0     ✔ stringr   1.6.0
+    ## ✔ ggplot2   4.0.0     ✔ tibble    3.3.0
+    ## ✔ lubridate 1.9.4     ✔ tidyr     1.3.1
+    ## ✔ purrr     1.1.0     
     ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
     ## ✖ dplyr::filter() masks stats::filter()
     ## ✖ dplyr::lag()    masks stats::lag()
@@ -41,13 +41,13 @@ library(tidyverse)
 library(tidymodels)
 ```
 
-    ## ── Attaching packages ────────────────────────────────────── tidymodels 1.2.0 ──
-    ## ✔ broom        1.0.6     ✔ rsample      1.2.1
-    ## ✔ dials        1.3.0     ✔ tune         1.2.1
-    ## ✔ infer        1.0.7     ✔ workflows    1.1.4
-    ## ✔ modeldata    1.4.0     ✔ workflowsets 1.1.0
-    ## ✔ parsnip      1.2.1     ✔ yardstick    1.3.1
-    ## ✔ recipes      1.1.0     
+    ## ── Attaching packages ────────────────────────────────────── tidymodels 1.4.1 ──
+    ## ✔ broom        1.0.10     ✔ rsample      1.3.1 
+    ## ✔ dials        1.4.2      ✔ tailor       0.1.0 
+    ## ✔ infer        1.0.9      ✔ tune         2.0.1 
+    ## ✔ modeldata    1.5.1      ✔ workflows    1.3.0 
+    ## ✔ parsnip      1.3.3      ✔ workflowsets 1.1.1 
+    ## ✔ recipes      1.3.1      ✔ yardstick    1.3.2 
     ## ── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
     ## ✖ scales::discard() masks purrr::discard()
     ## ✖ dplyr::filter()   masks stats::filter()
@@ -55,7 +55,6 @@ library(tidymodels)
     ## ✖ dplyr::lag()      masks stats::lag()
     ## ✖ yardstick::spec() masks readr::spec()
     ## ✖ recipes::step()   masks stats::step()
-    ## • Dig deeper into tidy modeling with R at https://www.tmwr.org
 
 ``` r
 library(janitor)
@@ -186,7 +185,7 @@ from the incoming student characteristics.
 
 ## Splitting into training and testing
 
-The code is dividing the `cr` dataset into two parts: a training set
+The code is dividing the `hs` dataset into two parts: a training set
 (`train`) to teach a machine learning model and a testing set (`test`)
 to evaluate how well the model has learned. This split ensures that the
 model is evaluated on data it hasn’t seen before, providing a more
@@ -249,9 +248,9 @@ hs_model<-linear_reg(mode="regression",engine="lm")
     built-in `lm()` function for linear modeling.
 
 - **`hs_model`**: The specified linear regression model is then stored
-  in the `hs_model` variable. This doesn’t train the model yet; it
-  merely sets up the type of model and the engine to be used. Training
-  the model would require additional steps using the training data.
+  in the `hs_model` variable. This doesn’t train the model yet. It sets
+  up the type of model and the engine to be used. Training the model
+  would require additional steps using the training data.
 
 ## Set Recipe
 
@@ -260,10 +259,10 @@ streamlined way to define and preprocess data for modeling. It allows
 users to specify a series of steps to transform and preprocess data,
 such as normalization, encoding categorical variables, and handling
 missing values. These steps are defined in a consistent and reproducible
-manner, creating a “recipe” that can be applied to both training and new
-datasets. This ensures that data transformations are consistent across
-different stages of the modeling process, facilitating more reliable
-model training and prediction. Essentially, recipes offers a tidy and
+manner, creating a “recipe” that can be applied to multiple datasets.
+This ensures that data transformations are consistent across different
+stages of the modeling process, which makes model training and
+validation much easier. Essentially, `recipes` offers a tidy and
 systematic approach to data preparation in the modeling workflow.
 
 The code below is preparing the data for modeling. It sets up a series
@@ -382,39 +381,39 @@ hs_rec%>%prep()
 
     ## ── Operations
 
-    ## • Collapsing factor levels for: x1hhnumber and x1famincome, ... | Trained
+    ## • Collapsing factor levels for: x1hhnumber x1famincome, ... | Trained
 
     ## • Dummy variables from: x1par1edu, x1par1emp, x1hhnumber, ... | Trained
 
     ## • Missing value column filter removed: <none> | Trained
 
-    ## • Removing rows with NA values in: x3tgpatot and x1txmtscor, ... | Trained
+    ## • Removing rows with NA values in: x3tgpatot x1txmtscor, ... | Trained
 
     ## • Correlation filter on: x1par1edu_Unit.non.response, ... | Trained
 
     ## • Zero variance filter removed: <none> | Trained
 
-    ## • Centering and scaling for: x1txmtscor and x1schooleng, ... | Trained
+    ## • Centering and scaling for: x1txmtscor x1schooleng, ... | Trained
 
 ``` r
 hs_rec%>%prep()%>%bake(train)
 ```
 
-    ## # A tibble: 8,331 × 47
+    ## # A tibble: 8,331 × 46
     ##    x1txmtscor x1schooleng x3tgpatot x1par1edu_Bachelor.s.degree
     ##         <dbl>       <dbl>     <dbl>                       <dbl>
-    ##  1    -2.65         0.600       1.5                      -0.505
-    ##  2     0.854        0.482       3                         1.98 
-    ##  3     0.0862       0.600       3.5                      -0.505
-    ##  4     1.46         1.50        3.5                       1.98 
-    ##  5     1.51         0.600       2.5                       1.98 
-    ##  6    -0.0447      -1.55        3.5                      -0.505
-    ##  7     0.773       -1.24        3.5                      -0.505
-    ##  8     1.27        -1.24        4                        -0.505
-    ##  9    -0.826       -1.71        1.5                      -0.505
-    ## 10    -0.332        1.50        2                        -0.505
+    ##  1      0.741       0.336       3.5                       2.00 
+    ##  2      0.624       1.49        3.5                       2.00 
+    ##  3     -1.48        0.596       1.5                      -0.500
+    ##  4     -1.06       -1.10        2.5                      -0.500
+    ##  5     -0.988      -1.01        1                        -0.500
+    ##  6     -2.20       -1.20        2.5                      -0.500
+    ##  7      0.202      -0.656       3.5                      -0.500
+    ##  8     -1.30       -0.302       2                        -0.500
+    ##  9     -0.180      -0.821       2                        -0.500
+    ## 10     -0.285      -1.41        2.5                       2.00 
     ## # ℹ 8,321 more rows
-    ## # ℹ 43 more variables: x1par1edu_High.school.diploma.or.GED <dbl>,
+    ## # ℹ 42 more variables: x1par1edu_High.school.diploma.or.GED <dbl>,
     ## #   x1par1edu_Less.than.high.school <dbl>, x1par1edu_Master.s.degree <dbl>,
     ## #   x1par1edu_Ph.D.M.D.Law.other.high.lvl.prof.degree <dbl>,
     ## #   x1par1emp_P1.currently.working.PT...35.hrs.wk. <dbl>,
@@ -504,7 +503,7 @@ test%>%
     ## # A tibble: 1 × 3
     ##   .metric .estimator .estimate
     ##   <chr>   <chr>          <dbl>
-    ## 1 rmse    standard       0.609
+    ## 1 rmse    standard       0.604
 
 The code calculates the Root Mean Squared Error (RMSE) for the
 predictions in the `test` dataset by comparing the predicted values
