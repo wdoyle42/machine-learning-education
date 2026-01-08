@@ -1,12 +1,7 @@
----
-title: "Tentative Class Schedule"
-author: "Will Doyle"
-date: "2026-01-09"
-output: github_document
-editor_options: 
-  markdown: 
-    wrap: 72
----
+Tentative Class Schedule
+================
+Will Doyle
+2026-01-09
 
 January 8, 2026 Intro to Lasso
 
@@ -18,9 +13,10 @@ January 20, 2026 Elastic net for binary outcomes
 
 January 22, 2026 Further adventures in feature engineering
 
-January 27, 2026  Elastic net for multinomial outcomes
+January 27, 2026 Elastic net for multinomial outcomes
 
-January 29, 2026 More cross-validation approaches: simulated annealing, Bayesian optimization
+January 29, 2026 More cross-calidation approaches: simulated annealing,
+Bayesian optimization
 
 February 3, 2026 Intro to SVM
 
@@ -28,9 +24,9 @@ February 5, 2026 SVM part 2: the kernel trick
 
 February 10, 2026 SVM part 3: Tuning hyperparameters
 
-February 12, 2026 SVM 4: Deploying 
+February 12, 2026 SVM 4: Deploying
 
-February 17, 2026 Intro to tree-based models 
+February 17, 2026 Intro to tree-based models
 
 February 19, 2026 Random Forests
 
@@ -38,7 +34,7 @@ February 24, 2026 Random Forests
 
 February 26, 2026 Xgboost, part 1
 
-March 3, 2026 Xgboost, part 2 
+March 3, 2026 Xgboost, part 2
 
 March 4, 2025 Recap and case studies
 
@@ -46,9 +42,9 @@ March 10, 2026 Spring Break
 
 March 12, 2026 Spring Break
 
-March 17, 2026 Neural nets: architecture, pt. 1
+March 17, 2026 Neural nets: architecture, pt. 1
 
-March 19, 2026 Neural nets: architecture, pt. 2
+March 19, 2026 Neural nets: architecture, pt. 2
 
 March 24, 2026 Neural nets: backpropagation
 
@@ -58,10 +54,10 @@ March 31, 2026 Neural nets: regularization and variable importance
 
 April 2, 2026 Fitting Neural Nets: Image recognition application
 
-April 7, 2026 
+April 7, 2026
 
 April 9, 2026 Fitting Neural Nets: Large k multinomial application
 
-April 14, 2025 
+April 14, 2025
 
 April 16, 2025 Recap and Case studies
