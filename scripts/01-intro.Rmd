@@ -66,10 +66,14 @@ This won't always be our approach.
 
 ```{r}
 hs <- hs %>%
-  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+ mutate(across(where(is.numeric) ,
+                ~ replace(.x, .x %in% -9:-1, NA))) %>%
   drop_na()
 ```
 
+I know that in the nces coding scheme values from -1 to -9 indicate missing data, so the above code replaces those missing values with NA. 
+
+## Tidymodels
 
 `tidymodels` is a collection of R packages that provides a consistent and tidy approach to building, evaluating, and tuning statistical models. It integrates various stages of the modeling process, from data preprocessing to model evaluation, under a unified framework that's easy to use and aligns with the principles of the `tidyverse`.
 

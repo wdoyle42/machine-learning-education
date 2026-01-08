@@ -86,12 +86,29 @@ hs<-read_csv("hsls_extract.csv")%>%clean_names()
 
 Categorical/factor variables marked with (f)
 
-x3gpatot: Final HS GPA x1region: Region of the country (f) x1locale:
-Locale (f) x1control: Control (f) x1iepflag: IEP Flag (f) x1stuedexpct:
-Student expectations for educational attainment (f) x1schooleng: Student
-engagement x1famincome: Family income (f) x1hhnumber: Number in
-household (f) x1par1emp: Parent’s employment status (f) x1par1edu:
-Parent’s education level (f) x1tmtscor: Math theta score in ninth grade
+x3gpatot: Final HS GPA
+
+x1region: Region of the country (f)
+
+x1locale: Locale (f)
+
+x1control: Control (f)
+
+x1iepflag: IEP Flag (f)
+
+x1stuedexpct: Student expectations for educational attainment (f)
+
+x1schooleng: Student engagement
+
+x1famincome: Family income (f)
+
+x1hhnumber: Number in household (f)
+
+x1par1emp: Parent’s employment status (f)
+
+x1par1edu: Parent’s education level (f)
+
+x1tmtscor: Math theta score in ninth grade
 
 ## Data Cleaning
 
@@ -100,9 +117,15 @@ missing data. This won’t always be our approach.
 
 ``` r
 hs <- hs %>%
-  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+ mutate(across(where(is.numeric) ,
+                ~ replace(.x, .x %in% -9:-1, NA))) %>%
   drop_na()
 ```
+
+I know that in the nces coding scheme values from -1 to -9 indicate
+missing data, so the above code replaces those missing values with NA.
+
+## Tidymodels
 
 `tidymodels` is a collection of R packages that provides a consistent
 and tidy approach to building, evaluating, and tuning statistical
@@ -375,7 +398,7 @@ hs_rec%>%prep()
 
     ## ── Training information
 
-    ## Training data contained 8331 data points and no incomplete rows.
+    ## Training data contained 14445 data points and no incomplete rows.
 
     ## 
 
@@ -399,21 +422,21 @@ hs_rec%>%prep()
 hs_rec%>%prep()%>%bake(train)
 ```
 
-    ## # A tibble: 8,331 × 46
+    ## # A tibble: 14,445 × 47
     ##    x1txmtscor x1schooleng x3tgpatot x1par1edu_Bachelor.s.degree
     ##         <dbl>       <dbl>     <dbl>                       <dbl>
-    ##  1      0.741       0.336       3.5                       2.00 
-    ##  2      0.624       1.49        3.5                       2.00 
-    ##  3     -1.48        0.596       1.5                      -0.500
-    ##  4     -1.06       -1.10        2.5                      -0.500
-    ##  5     -0.988      -1.01        1                        -0.500
-    ##  6     -2.20       -1.20        2.5                      -0.500
-    ##  7      0.202      -0.656       3.5                      -0.500
-    ##  8     -1.30       -0.302       2                        -0.500
-    ##  9     -0.180      -0.821       2                        -0.500
-    ## 10     -0.285      -1.41        2.5                       2.00 
-    ## # ℹ 8,321 more rows
-    ## # ℹ 42 more variables: x1par1edu_High.school.diploma.or.GED <dbl>,
+    ##  1    -0.0424     -1.03         2.5                      -0.466
+    ##  2     0.258      -0.291        2.5                      -0.466
+    ##  3    -0.212       0.562        2                        -0.466
+    ##  4    -2.24        0.151        2                        -0.466
+    ##  5    -0.665       0.521        3                        -0.466
+    ##  6     1.08        0.901        3                        -0.466
+    ##  7     1.63        0.0176       3                         2.14 
+    ##  8    -0.141       0.901        3.5                      -0.466
+    ##  9    -0.341       0.562        3                        -0.466
+    ## 10     0.366       0.449        3                        -0.466
+    ## # ℹ 14,435 more rows
+    ## # ℹ 43 more variables: x1par1edu_High.school.diploma.or.GED <dbl>,
     ## #   x1par1edu_Less.than.high.school <dbl>, x1par1edu_Master.s.degree <dbl>,
     ## #   x1par1edu_Ph.D.M.D.Law.other.high.lvl.prof.degree <dbl>,
     ## #   x1par1emp_P1.currently.working.PT...35.hrs.wk. <dbl>,
@@ -490,10 +513,18 @@ predictions on new data.
 
 ``` r
 test<-
-  hs_wf%>%
-  predict(new_data=test)%>%
-  bind_cols(test)
+  augment(hs_wf, new_data = test)
 ```
+
+Using `augment()` with the fitted workflow `hs_wf` appends predictions
+to the test data. Under the hood, it first applies the trained recipe to
+test (the same preprocessing learned from `train`), then uses the fitted
+model inside `hs_wf` to generate predicted GPA values, which are
+returned in a `.pred` column (for regression).
+
+For a linear model, you can think of this as computing
+
+$$ \hat{y}=X_i\beta$$
 
 ``` r
 test%>%
@@ -503,7 +534,7 @@ test%>%
     ## # A tibble: 1 × 3
     ##   .metric .estimator .estimate
     ##   <chr>   <chr>          <dbl>
-    ## 1 rmse    standard       0.604
+    ## 1 rmse    standard       0.646
 
 The code calculates the Root Mean Squared Error (RMSE) for the
 predictions in the `test` dataset by comparing the predicted values
@@ -558,55 +589,56 @@ hs_wf_full%>%
   print(n=100)
 ```
 
-    ## # A tibble: 46 × 5
-    ##    term                                    estimate std.error statistic  p.value
-    ##    <chr>                                      <dbl>     <dbl>     <dbl>    <dbl>
-    ##  1 (Intercept)                              2.93e+0   0.00573  512.     0       
-    ##  2 x1txmtscor                               3.39e-1   0.00657   51.6    0       
-    ##  3 x1schooleng                              1.23e-1   0.00581   21.2    7.05e-98
-    ##  4 x1stuedexpct_High.school.diploma.or.GED -7.45e-2   0.00706  -10.6    6.02e-26
-    ##  5 x1control_Public                        -6.96e-2   0.00628  -11.1    1.97e-28
-    ##  6 x1famincome_Family.income....15.000.an… -5.98e-2   0.0104    -5.72   1.08e- 8
-    ##  7 x1hhnumber_X4.Household.members          5.74e-2   0.0148     3.88   1.07e- 4
-    ##  8 x1famincome_Family.income.less.than.or… -5.65e-2   0.00900   -6.28   3.52e-10
-    ##  9 x1locale_Rural                           5.55e-2   0.00719    7.71   1.36e-14
-    ## 10 x1famincome_Unit.non.response           -4.88e-2   0.0180    -2.71   6.84e- 3
-    ## 11 x1hhnumber_X5.Household.members          3.97e-2   0.0130     3.05   2.26e- 3
-    ## 12 x1region_South                          -3.52e-2   0.00715   -4.92   8.78e- 7
-    ## 13 x1locale_Town                            3.47e-2   0.00652    5.31   1.09e- 7
-    ## 14 x1par1edu_Bachelor.s.degree              3.35e-2   0.00855    3.92   8.94e- 5
-    ## 15 x1hhnumber_X6.Household.members          3.16e-2   0.00995    3.17   1.51e- 3
-    ## 16 x1region_Northeast                      -3.08e-2   0.00670   -4.59   4.39e- 6
-    ## 17 x1par1edu_Master.s.degree                2.92e-2   0.00743    3.93   8.65e- 5
-    ## 18 x1hhnumber_X3.Household.members          2.87e-2   0.0121     2.36   1.81e- 2
-    ## 19 x1stuedexpct_Complete.an.Associate.s.d… -2.87e-2   0.00640   -4.48   7.57e- 6
-    ## 20 x1famincome_Family.income....35.000.an… -2.70e-2   0.0102    -2.65   7.98e- 3
-    ## 21 x1stuedexpct_Don.t.know                 -2.49e-2   0.00764   -3.26   1.11e- 3
-    ## 22 x1stuedexpct_other                      -2.42e-2   0.00616   -3.93   8.40e- 5
-    ## 23 x1hhnumber_X8.Household.members          2.24e-2   0.00660    3.38   7.14e- 4
-    ## 24 x1stuedexpct_Complete.a.Master.s.degree  2.16e-2   0.00783    2.77   5.69e- 3
-    ## 25 x1par1edu_Less.than.high.school         -1.83e-2   0.00712   -2.57   1.01e- 2
-    ## 26 x1hhnumber_X7.Household.members          1.79e-2   0.00765    2.35   1.90e- 2
-    ## 27 x1par1emp_P1.currently.working.PT...35…  1.71e-2   0.00608    2.81   4.96e- 3
-    ## 28 x1par1emp_P1.not.currently.working.for… -1.33e-2   0.00635   -2.10   3.59e- 2
-    ## 29 x1iepflag_Student.has.no.IEP             1.30e-2   0.00595    2.18   2.93e- 2
-    ## 30 x1region_West                           -1.20e-2   0.00673   -1.78   7.50e- 2
-    ## 31 x1par1edu_Ph.D.M.D.Law.other.high.lvl.…  1.07e-2   0.00669    1.60   1.10e- 1
-    ## 32 x1stuedexpct_Complete.Ph.D.M.D.Law.oth…  1.03e-2   0.00799    1.29   1.98e- 1
-    ## 33 x1par1edu_High.school.diploma.or.GED    -9.90e-3   0.00897   -1.10   2.70e- 1
-    ## 34 x1famincome_Family.income....55.000.an… -7.60e-3   0.00995   -0.764  4.45e- 1
-    ## 35 x1hhnumber_other                        -4.84e-3   0.00642   -0.755  4.50e- 1
-    ## 36 x1famincome_Family.income....195.000.a…  4.58e-3   0.00658    0.696  4.86e- 1
-    ## 37 x1locale_Suburb                          4.45e-3   0.00715    0.623  5.34e- 1
-    ## 38 x1famincome_Family.income....235.000    -2.97e-3   0.00763   -0.388  6.98e- 1
-    ## 39 x1iepflag_Student.has.an.IEP             2.36e-3   0.00607    0.389  6.97e- 1
-    ## 40 x1famincome_Family.income....135.000.a… -2.31e-3   0.00757   -0.305  7.60e- 1
-    ## 41 x1famincome_Family.income....75.000.an… -1.59e-3   0.00920   -0.173  8.63e- 1
-    ## 42 x1famincome_Family.income....175.000.a… -1.33e-3   0.00641   -0.207  8.36e- 1
-    ## 43 x1famincome_other                       -1.30e-3   0.00609   -0.213  8.32e- 1
-    ## 44 x1par1emp_P1.has.never.worked.for.pay   -8.84e-4   0.00609   -0.145  8.85e- 1
-    ## 45 x1famincome_Family.income....155.000.a… -7.95e-4   0.00668   -0.119  9.05e- 1
-    ## 46 x1famincome_Family.income....95.000.an… -1.22e-4   0.00876   -0.0139 9.89e- 1
+    ## # A tibble: 47 × 5
+    ##    term                                   estimate std.error statistic   p.value
+    ##    <chr>                                     <dbl>     <dbl>     <dbl>     <dbl>
+    ##  1 (Intercept)                             2.73e+0   0.00468   584.    0        
+    ##  2 x1txmtscor                              3.36e-1   0.00543    61.9   0        
+    ##  3 x1schooleng                             1.72e-1   0.00488    35.2   4.86e-263
+    ##  4 x1stuedexpct_High.school.diploma.or.G… -8.93e-2   0.00600   -14.9   8.39e- 50
+    ##  5 x1control_Public                       -7.51e-2   0.00513   -14.6   2.85e- 48
+    ##  6 x1famincome_Family.income.less.than.o… -7.45e-2   0.00779    -9.57  1.20e- 21
+    ##  7 x1famincome_Family.income....15.000.a… -6.44e-2   0.00930    -6.92  4.52e- 12
+    ##  8 x1locale_Rural                          6.40e-2   0.00584    11.0   7.84e- 28
+    ##  9 x1hhnumber_X4.Household.members         6.25e-2   0.0116      5.39  7.10e-  8
+    ## 10 x1famincome_Unit.non.response          -5.58e-2   0.0156     -3.58  3.40e-  4
+    ## 11 x1hhnumber_X5.Household.members         4.45e-2   0.0102      4.36  1.29e-  5
+    ## 12 x1locale_Town                           4.28e-2   0.00533     8.03  1.05e- 15
+    ## 13 x1stuedexpct_Don.t.know                -4.04e-2   0.00637    -6.34  2.28e- 10
+    ## 14 x1stuedexpct_Complete.an.Associate.s.… -3.84e-2   0.00531    -7.25  4.48e- 13
+    ## 15 x1par1edu_Bachelor.s.degree             3.72e-2   0.00696     5.34  9.22e-  8
+    ## 16 x1par1edu_Master.s.degree               3.61e-2   0.00599     6.03  1.65e-  9
+    ## 17 x1famincome_Family.income....35.000.a… -3.51e-2   0.00881    -3.98  6.79e-  5
+    ## 18 x1hhnumber_X3.Household.members         2.61e-2   0.00964     2.71  6.83e-  3
+    ## 19 x1hhnumber_X6.Household.members         2.49e-2   0.00791     3.15  1.66e-  3
+    ## 20 x1region_South                         -2.43e-2   0.00584    -4.17  3.10e-  5
+    ## 21 x1stuedexpct_Complete.a.Master.s.degr…  2.40e-2   0.00628     3.82  1.36e-  4
+    ## 22 x1stuedexpct_other                     -2.16e-2   0.00498    -4.34  1.44e-  5
+    ## 23 x1region_Northeast                     -2.12e-2   0.00544    -3.89  1.01e-  4
+    ## 24 x1par1emp_P1.currently.working.PT...3…  1.96e-2   0.00498     3.93  8.35e-  5
+    ## 25 x1hhnumber_X7.Household.members         1.82e-2   0.00620     2.94  3.24e-  3
+    ## 26 x1par1edu_Less.than.high.school        -1.74e-2   0.00602    -2.90  3.79e-  3
+    ## 27 x1stuedexpct_Complete.Ph.D.M.D.Law.ot…  1.54e-2   0.00636     2.42  1.55e-  2
+    ## 28 x1par1edu_Ph.D.M.D.Law.other.high.lvl…  1.53e-2   0.00538     2.85  4.40e-  3
+    ## 29 x1hhnumber_X8.Household.members         1.37e-2   0.00537     2.55  1.08e-  2
+    ## 30 x1famincome_Family.income....55.000.a… -9.87e-3   0.00847    -1.16  2.44e-  1
+    ## 31 x1locale_Suburb                         9.15e-3   0.00582     1.57  1.16e-  1
+    ## 32 x1iepflag_Student.has.no.IEP            8.87e-3   0.00488     1.82  6.90e-  2
+    ## 33 x1hhnumber_other                        8.35e-3   0.00525     1.59  1.12e-  1
+    ## 34 x1stuedexpct_Start.a.Master.s.degree   -7.99e-3   0.00482    -1.66  9.71e-  2
+    ## 35 x1par1emp_P1.not.currently.working.fo… -7.33e-3   0.00525    -1.40  1.63e-  1
+    ## 36 x1famincome_Family.income....235.000    5.82e-3   0.00629     0.926 3.54e-  1
+    ## 37 x1par1edu_High.school.diploma.or.GED   -5.38e-3   0.00750    -0.717 4.73e-  1
+    ## 38 x1region_West                          -5.19e-3   0.00553    -0.938 3.48e-  1
+    ## 39 x1famincome_Family.income....195.000.…  4.08e-3   0.00536     0.761 4.47e-  1
+    ## 40 x1famincome_Family.income....75.000.a…  3.73e-3   0.00768     0.486 6.27e-  1
+    ## 41 x1famincome_Family.income....95.000.a… -3.58e-3   0.00721    -0.496 6.20e-  1
+    ## 42 x1famincome_Family.income....155.000.… -3.38e-3   0.00546    -0.619 5.36e-  1
+    ## 43 x1famincome_Family.income....135.000.…  2.19e-3   0.00613     0.358 7.20e-  1
+    ## 44 x1famincome_Family.income....175.000.…  1.15e-3   0.00522     0.221 8.25e-  1
+    ## 45 x1iepflag_Student.has.an.IEP           -7.83e-4   0.00499    -0.157 8.75e-  1
+    ## 46 x1par1emp_P1.has.never.worked.for.pay  -6.88e-4   0.00499    -0.138 8.90e-  1
+    ## 47 x1famincome_other                      -5.12e-4   0.00496    -0.103 9.18e-  1
 
 **Detailed Explanation**:
 
@@ -642,6 +674,31 @@ hs_wf_full%>%
     - This displays the top 100 results after sorting. It’s especially
       useful if there are many predictor variables in the model and you
       want to see the ones with the highest coefficient values.
+
+We can also plot the results:
+
+``` r
+hs_wf_full %>%
+  extract_fit_parsnip() %>%
+  tidy(conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(abs_est = abs(estimate)) %>%
+  arrange(desc(abs_est)) %>%
+  slice(1:10) %>%
+  transmute(
+    term,
+    Coefficient = estimate,
+    conf.low=estimate-(1.96*std.error),
+    conf.high=estimate+(1.96*std.error)
+  ) %>%
+  mutate(term = fct_reorder(term, Coefficient)) %>%
+  ggplot(aes(y = term, x = Coefficient)) +
+  geom_vline(xintercept = 0, linewidth = 0.4) +
+  geom_point(size = 2, color="blue") +
+  theme_minimal()
+```
+
+![](01-intro_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
 ## Moving forward
 
