@@ -24,7 +24,8 @@ hs<-read_csv("hsls_extract.csv")%>%
 
 ```{r}
 hs <- hs %>%
-  mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
+ mutate(across(where(is.numeric) ,
+                ~ replace(.x, .x %in% -9:-1, NA))) %>%
   drop_na()
 ```
 
