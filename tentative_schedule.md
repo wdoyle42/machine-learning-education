@@ -15,7 +15,7 @@ January 22, 2026 Further adventures in feature engineering
 
 January 27, 2026 Elastic net for multinomial outcomes
 
-January 29, 2026 More cross-calidation approaches: simulated annealing,
+January 29, 2026 More cross-validation approaches: simulated annealing,
 Bayesian optimization
 
 February 3, 2026 Intro to SVM
