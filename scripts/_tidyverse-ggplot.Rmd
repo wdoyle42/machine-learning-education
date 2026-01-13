@@ -83,6 +83,10 @@ The `summarize` command "collapses" the data, using the operator supplied, in th
 hs%>%
 ggplot(aes(x=x3tgpatot))+
   geom_histogram()
+
+hs%>%
+ggplot(aes(x=x1txmtscor))+
+  geom_histogram()
 ```
 
 GGPlot stands for grammer of graphics. The basic idea is that a graphic consistes of elements that are mapped onto a geometry via an aesthetic (eg x and y variables mapped onto a scatterplot). A description is here: https://ggplot2.tidyverse.org/. The above code starts with the hs dataset, creates a ggplot object with a single variable (GPA) and then adds a histogram geometry to the existing ggplot object, using the `+` as a conjuction. 
@@ -98,6 +102,7 @@ hs%>%
   summarize(`Mean GPA`=mean(x3tgpatot))%>%
   arrange(`Mean GPA`)%>%
   rename(`Parental Education`=x1par1edu)
+
 ```
 
 A good way to read these is to use the phrase "and then" for every pipe operator. 

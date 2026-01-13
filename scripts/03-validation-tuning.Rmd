@@ -1,10 +1,8 @@
 ---
 title: "Validation and Hyperparameter Tuning"
 author: "Will Doyle"
-date: "2025-01-09"
-output:
-  word_document: default
-  pdf_document: default
+date: "2026-01-13"
+output: github_document
 ---
 
 ## Cross Validation
@@ -26,7 +24,7 @@ This process is called *cross validation*, and it involves two important decisio
  
 ## Monte Carlo Resampling
 
-Monte Carlo resampling is a method used in the context of cross-validation to evaluate machine learning models. Monte Carlo resampling involves randomly splitting the data multiple times into training and testing sets, ensuring that the evaluation of model fit in the testing dataset isn't unduly affected by a single "draw" of the testing data. 
+Monte Carlo resampling is a method used in the context of cross-validation to evaluate machine learning models. Monte Carlo resampling involves randomly splitting the data multiple times into *analysis* (training) and *assessment* (testing) sets, ensuring that the evaluation of model fit in the testing dataset isn't unduly affected by a single "draw" of the testing data. 
 
 We'll get everything set up for modeling in the hsls data before structuring the data for resampling. 
 
@@ -73,6 +71,7 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_normalize(all_predictors())
 ```
 
+We have two values that we need to specify to set up a lasso model. The `penalty` value sets the $\lambda$ from the above notes. The `mixture` value sets the proportion ridge (L2) or lasso (L1). Setting mixture to 1 makes the model pure lasso. 
 
 ```{r}
 penalty_spec<-.1
@@ -108,7 +107,7 @@ hs_lasso_fit<-hs_wf%>%
   fit_resamples(hs_rs)
 ```
 
-The model has now been fit to 25 versions of the training data. Let's look at the metrics using `collect_metrics`.
+The model has now been fit to 25 versions of the analysis data. Let's look at the metrics using `collect_metrics`. This will take the coefficients from the analysis datasets and generate predictions from the assessment datasets. 
 ```{r}
 hs_lasso_fit%>%collect_metrics()
 ```
@@ -126,7 +125,7 @@ hs_lasso_fit%>%
 
 ## Model Tuning
 
-The problem with the above is that I arbitrarily set the value of penalty to be .1. Do I know this was correct? No! What we need to do is try out a bunch of different values of the penalty, and see which one gives us the best model fit. This process has the impressive name of "hyperparameter tuning" but it could just as easily be called "trying a bunch of stuff to see what works."
+The problem with the above is that I arbitrarily set the value of penalty to be .1. Do I know this was correct? No! What we need to do is try out a bunch of different values of the penalty, and see which one gives us the best model fit. This process has the impressive name of "hyperparameter tuning via cross validation" but it could just as easily be called "trying a bunch of stuff to see what works."
 
 Below I'm going to give the argument `tune()` for the value of penalty. This will allow us to "fill in" values later. 
 
@@ -139,7 +138,7 @@ hs_tune_model<-
   set_engine("glmnet")
 ```
 
-Now that we've said which parameter to tune, we'll use the `grid_regular` command to get a set of nicely spaced out values. This command is specific to the parameter, so it will choose reasonable values for a penalty. 
+Now that we've said which parameter to tune, we'll use the `grid_regular` command to get a set of nicely spaced out values. This command is specific to the hyperparameter, so it will choose reasonable values for the penalty hyperparameter. 
 
 ```{r}
 lasso_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model), levels=10)
@@ -215,24 +214,27 @@ First, we partition the data:
 The dataset is randomly divided into k equal (or nearly equal) folds.
 Each fold serves as the testing dataset once, while the remaining 
 k−1 folds are combined to form the training dataset.
+
 Model Training and Evaluation:
 
 For each fold:
-The model is trained on the aggregated k−1 folds (training set).
-The model is tested on the left-out fold (testing set).
-The performance metric (e.g., RMSE, accuracy, is calculated on the testing set.
-This process is repeated k times (once for each fold).
+- The model is trained on the aggregated k−1 folds (*analysis* (training) set).
+- The model is tested on the left-out fold (*assessment* (testing) set).
+- The performance metric (e.g., RMSE, accuracy, is calculated on the assessment set.
+- This process is repeated k times (once for each fold).
+
 Aggregating Results:
 
 The evaluation metrics from all k iterations are averaged to produce a single performance estimate.
 This reduces the risk of biased evaluations due to a single train-test split.
 
-To structure the data for k-fold resampling, we use the `vfold_cv` command:
+To structure the data for k-fold resampling, we use the `vfold_cv` command. Here we'll do 20 folds:
 ```{r}
 hs_vf<-vfold_cv(hs_train,v = 20)
 ```
 
 
+And then we can add the new tuning grid to our workflow. 
 ```{r}
 hs_lasso_tune_fit <- 
   hs_wf %>%
@@ -255,7 +257,7 @@ hs_lasso_tune_fit%>%
 
 Ridge regression is another technique for regularization, which helps to solve the multicollinearity problem by adding a degree of bias to the regression estimates. It includes every predictor in the model but shrinks the coefficients of less important predictors towards zero, thus minimizing their impact on the model.
 
-In the tidymodels setup, ridge is specified with mixture=0 and penalty set to the desired value.A value of mixture = 1 corresponds to a pure lasso model, while mixture = 0 indicates ridge regression. Values of mixture in between will set the balance between the two in the elastic net model, which we'll cover shortly.
+In the tidymodels setup, ridge is specified with mixture=0 and penalty set to the desired value. A value of mixture = 1 corresponds to a pure lasso model, while mixture = 0 indicates ridge regression. Values of mixture in between will set the balance between the two in the elastic net model, which we'll cover shortly.
 
 The code below runs through what should be a familiar set of steps to tune a ridge regression. 
 
@@ -281,7 +283,7 @@ hs_ridge_tune_fit <-
     tune_grid(hs_rs,grid=ridge_grid)
 ```
 
-
+We examine the rmse from the cross validated ridge regression here. 
 ```{r}
 hs_ridge_tune_fit%>%
   collect_metrics()%>%
@@ -289,6 +291,7 @@ hs_ridge_tune_fit%>%
   arrange(mean)
 ```
 
+And as always, select the best model fit. 
 ```{r}
 best_ridge_penalty<-select_best(hs_ridge_tune_fit)
 
@@ -301,7 +304,11 @@ hs_tune_model<-
 hs_ridge_result<-hs_wf%>%
   update_model(hs_tune_model)%>%
   fit(hs_train)
+```
 
+Examining the coefficients for a ridge regression shows how they're more likely to be "downweighted" as opposed to set to 0 as in lasso, particularly in this case where very low values for the penalty are favored. 
+
+```{r}
 hs_ridge_result%>%extract_fit_parsnip()%>%tidy()%>%
   arrange(-abs(estimate))%>%print(n=50)
 ```

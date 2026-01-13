@@ -1,27 +1,22 @@
 ---
 title: "Regularization"
 author: "Will Doyle"
-date: "2025-01-09"
-output: pdf_document
+date: "2026-01-13"
+output: github_document
 ---
-
-
 
 ## Lasso model
 
+One of the key decisions for an analyst is which variables to include. We can make decisions about this using theory, or our understanding of the context, but we can also rely on computational approaches. This is known as *regularization* and it involves downweighting the importance of coefficients from a model based on the contribution that a predictor makes. We're going to make use of a regularization penalty known as the "lasso." The lasso downweights variables mostly by dropping variables that are highly correlated with one another, leaving only one of the correlated variables as contributors to the model. We set the degree to which this penalty will be implemented by setting the "penalty" variable in the model specification. (This is also called the L1 penalty, or L1 regularization)
 
-One of the key decisions for an analyst is which variables to include. We can make decisions about this using theory, or our understanding of the context, but we can also rely on computational approaches. This is known as *regularization* and it involves downweighting the importance of coefficients from a model based on the contribution that a predictor makes. We're going to make use of a regularization penalty known as the "lasso." The lasso downweights variables mostly be dropping variables that are highly correlated with one another, leaving only one of the correlated variables as contributors to the model. We set the degree to which this penalty will be implemented by setting the "penalty" variable in the model specification. (This is also called the L1 penalty, or L1 regularization)
-
-
-The lasso model minimizes the RSS plus the penalty times the coefficients, meaning the coefficients have to contribute substantially to minimizing RSS or they'll be quickly downweighted to 0. 
+The lasso model minimizes the RSS plus the penalty times the coefficients, meaning the coefficients have to contribute substantially to minimizing RSS or they'll be quickly downweighted to 0.
 
 $$ 
 =argmin[\sum_{i=1}^{n} (y_i - \beta_0 - \sum_{j=1}^{p} x_{ij} \beta_j)^2 + \lambda \sum_{j=1}^{p} |\beta_j|]
 $$
 
-
-
 ## Libraries
+
 ```{r}
 library(tidyverse)
 library(tidymodels)
@@ -33,8 +28,6 @@ library(janitor)
 We'll start by generating a large dataset with a strong predictor x1, and a weaker predictor, x2
 
 ```{r}
-
-
 # Generate standardized dataset
 n <- 1e6  # Number of observations
 x1 <- rnorm(n, mean = 0, sd = 1)
@@ -48,7 +41,7 @@ y <- (b1 * x1) + (b2 * x2) + rnorm(n, mean = 0, sd = 5)
 data <- tibble(x1 = x1, x2 = x2, y = y)
 ```
 
-We'll then split training and testing as always. 
+We'll then split training and testing as always.
 
 ```{r}
 data_split <- initial_split(data, prop = 0.8)
@@ -62,16 +55,16 @@ This data barely needs any preprocessing, so the recipe is simple
 recipe <- recipe(y ~ x1 + x2, data = train_data)
 ```
 
+Our model specification will be a bit different-- we're going to use the `tune()` function, which implies that we'll use different values for the penalty (lambda in the textbook, also known as l1 regularization).
 
-Our model specification will be a bit different-- we're going to use the `tune()` function, which implies that we'll use different values for the penalty (lambda in the textbook, also known as l1 regularization). 
 ```{r}
 # Define model specification with tunable penalty
 lasso_spec <- linear_reg(penalty = tune(), mixture = 1) %>%
   set_engine("glmnet")
 ```
 
+Put those together in a workflow.
 
-Put those together in a workflow. 
 ```{r}
 # Define a workflow
 workflow <- workflow() %>%
@@ -79,18 +72,16 @@ workflow <- workflow() %>%
   add_model(lasso_spec)
 ```
 
+When we set a tuning value, we're saying that we're going to supply a set of possible values for that parameter. The code below gives a grid with some sensible values using powers of 10 from -3 to 0. Penalty can only be from 0-1, this gives us a good lineup.
 
-When we set a tuning value, we're saying that we're going to supply a set of possible values for that parameter. The code below gives a grid with some sensible values using powers of 10 from -3 to 0. Penalty can only be from 0-1, this gives us a good lineup. 
 ```{r}
 # Grid of penalty values
 penalty_values <- 10^seq(-3, 0, length.out = 10)
 ```
 
-
-The function below uses `map_dfr` to map the penalty values onto the function that fits the data and outputs the results as a data frame, with the columns `predictions`, `rmse_values` and `coef_values`. The resulting data frame is created in the tibble function. The output is then the data frame. 
+The function below uses `map_dfr` to map the penalty values onto the function that fits the data and outputs the results as a data frame, with the columns `predictions`, `rmse_values` and `coef_values`. The resulting data frame is created in the tibble function. The output is then the data frame.
 
 ```{r}
-
 # Fit models for each penalty value and collect results
 results <- map_dfr(
   penalty_values,
@@ -123,7 +114,7 @@ results <- map_dfr(
 
 ```
 
-We can then plot the results. 
+We can then plot the results.
 
 ```{r}
 # Visualize RMSE and coefficients as a function of penalty
@@ -139,7 +130,9 @@ results %>%
     color = "Predictor"
   ) +
   theme_minimal()
+```
 
+```{r}
 results %>%
   ggplot(aes(x = penalty, y = rmse)) +
   geom_line() +
@@ -153,27 +146,25 @@ results %>%
 
 ```
 
+As you can see, as the penalty increases at first the rmse only decreases a bit. As it goes higher it begins downweighting even the x1 predictor too much and the rmse goes much higher.
 
-As you can see, as the penalty increases at first the rmse only decreases a bit. As it goes higher it begins downweighting even the x1 predictor too much and the rmse goes much higher. 
-
-Let's take that and apply it to our high school example, using lasso to predict GPA. 
+Let's take the lasso and apply it to our high school example, using lasso to predict GPA.
 
 ## Load dataset
+
 ```{r}
 hs<-read_csv("hsls_extract.csv")%>%clean_names()
 ```
 
-
 ## Data Cleaning
+
 ```{r}
 hs <- hs %>%
   mutate(across(-x1txmtscor, ~ ifelse(. < 0, NA, .)))%>%
   drop_na()
 ```
 
-
 ## Training/Testing
-
 
 ```{r}
 hs_split<-initial_split(hs)
@@ -183,8 +174,8 @@ hs_train<-training(hs_split)
 hs_test<-testing(hs_split)
 ```
 
-
 ## Recipe
+
 ```{r}
 hs_formula<-as.formula("x3tgpatot~.")
 
@@ -199,9 +190,9 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_normalize(all_predictors())
 ```
 
-Now we can update the model to use lasso, which will subset on a smaller number of covariates. In the `tidymodels` setup, ridge is alpha (mixture)=0, while lasso is alpha (mixture)=1.   https://parsnip.tidymodels.org/reference/glmnet-details.htm
+Now we can update the model to use lasso, which will subset on a smaller number of covariates. In the `tidymodels` setup, ridge is alpha (mixture)=0, while lasso is alpha (mixture)=1. <https://parsnip.tidymodels.org/reference/glmnet-details.htm>
 
-We'll set a penalty of .1 just to start. 
+We'll set a penalty of .1 just to start.
 
 ```{r}
 penalty_spec<-.05
@@ -214,7 +205,6 @@ lasso_fit<-
   set_engine("glmnet")%>%
   set_mode("regression")
 ```
-
 
 ## Define the Workflow
 
@@ -229,8 +219,7 @@ hs_wf<-hs_wf%>%
   add_model(lasso_fit)
 ```
 
-
-Now we can add our recipe to the workflow. 
+Now we can add our recipe to the workflow.
 
 ```{r}
 hs_wf<-hs_wf%>%
@@ -239,33 +228,28 @@ hs_wf<-hs_wf%>%
 
 And fit the data:
 
-
 ```{r}
 hs_wf<-hs_wf%>%
   fit(hs_train)
 ```
 
-Using the same setup as wed did with regression, we'll ad the predictions from the lasso model to the test dataset. 
+Using the same setup as we did with regression, we'll ad the predictions from the lasso model to the test dataset.
 
 ```{r}
-  hs_test<-
-  hs_wf%>%
-  predict(new_data=hs_test)%>%
-  rename(.pred1=.pred)%>%
-  bind_cols(hs_test)
+  hs_test<-augment(hs_wf,hs_test)
 ```
 
 ## Calculate RMSE
 
-Next we can use the `rmse` command to compare the actual outcome in the dataset to the outcome. 
+Next we can use the `rmse` command to compare the actual outcome in the dataset to the outcome.
 
 ```{r}
 hs_test%>%
-  rmse(truth=x3tgpatot,estimate=.pred1)
+  rmse(truth=x3tgpatot,estimate=.pred)
 ```
 
+We can also look at the coefficients to get a sense of what got included and what got dropped.
 
-We can also look at the coefficients to get a sense of what got included and what got dropped. 
 ```{r}
 hs_wf%>%
   extract_fit_parsnip()%>%
@@ -273,18 +257,12 @@ hs_wf%>%
   arrange(-abs(estimate))%>%print(n=50)
 ```
 
-So, whereas before we had 36 substantive coefficients, now we have four. That's what lasso does, particularly with a high penalty level. 
+So, whereas before we had 36 substantive coefficients, now we have four. That's what lasso does, particularly with a high penalty level.
 
-## Quick Exercise ##
+## Quick Exercise
 
 Go back and set the penalty to .01 and rerun the code. What changes in terms of coefficient estimates and rmse?
 
 ## Quick Exercise 2
 
-Our first kaggle challenge! Minimize the rmse using L1 regularization and/or feature engineering. 
-
-
-
-
-
-
+Our first kaggle challenge! Minimize the rmse using L1 regularization and/or feature engineering.

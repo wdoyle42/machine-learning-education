@@ -4,7 +4,6 @@ _tidyverse_gpplot.Rmd
 
 01-Intro.Rmd
 
-
 https://www.youtube.com/watch?v=dGEVhCa2I50
 
 https://www.tidymodels.org/start/models/

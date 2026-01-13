@@ -340,6 +340,7 @@ hs_wf_full%>%
   extract_fit_parsnip()%>%
   tidy()%>%
   arrange(-abs(estimate))%>%
+  slice(-1)%>%
   print(n=100)
 ```
 
