@@ -18,10 +18,6 @@ https://www.youtube.com/watch?v=Q81RR3yKn30&t=2s
 
 https://www.youtube.com/watch?v=NGf0voTMlcs&t=24s
 
-*Regularizaiton part 3*
-
-https://www.youtube.com/watch?v=1dKRdX9bfIo&t=142s
-
 *03-validation-tuning.Rmd*
 
 Machine Learning Fundamentals: Cross Validation 
@@ -30,7 +26,9 @@ https://www.youtube.com/watch?v=fSytzGwwBVw&t=106s
 
 *04-elastic-net.Rmd*
 
+Regularization part 3
 
+https://www.youtube.com/watch?v=1dKRdX9bfIo&t=142s
 
 *05-enet-binary-outcome.Rmd*
 

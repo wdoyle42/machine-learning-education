@@ -27,6 +27,7 @@ $$
 library(tidyverse)
 library(tidymodels)
 library(janitor)
+library(vip)
 ```
 
 ## Load dataset
@@ -124,7 +125,7 @@ collect_metrics()%>%
 Our workflow will be much the same as last time once we've identified the best parameters. The `select_best` will pull the values from the tuning process with best mean rmse.
 
 ```{r}
-best_params<-select_best(hs_enet_tune_fit)
+best_params<-select_best(hs_enet_tune_fit,metric="rmse")
 ```
 
 ## Finalizing the workflow
@@ -150,7 +151,13 @@ final_model <- final_enet_workflow %>%
 Below we can take a look at the coefficient estimates from the model fitted on the full training dataset.
 
 ```{r}
-final_model%>%extract_fit_parsnip()%>%tidy()%>%arrange(-estimate)
+final_model%>%extract_fit_parsnip()%>%tidy()%>%arrange(-abs(estimate))
+```
+
+```{r}
+final_model%>%
+  extract_fit_parsnip()%>%
+  vip()
 ```
 
 ## Check against testing data
@@ -158,9 +165,7 @@ final_model%>%extract_fit_parsnip()%>%tidy()%>%arrange(-estimate)
 We're now ready for the final check against the testing data.
 
 ```{r}
-predictions <- final_model %>%
-  predict(new_data = hs_test) %>% 
-  bind_cols(hs_test) 
+predictions <- augment(final_model,new_data=hs_test)
 ```
 
 ```{r}
@@ -172,4 +177,4 @@ metrics(truth = x3tgpatot, estimate = .pred)
 
 While we teach ridge and lasso separately, there's really no reason not to use elastic net and just sort out the appropriate balance of the two by tuning the mixture.
 
-Make sure you're clear on the difference between the structural parameter estimates we're used to thinking about in psychometrics of econometrics and the variable importance we're using here. It comes down to predictive thinking versus measurement/evaluation thinking.
+Make sure you're clear on the difference between the structural parameter estimates we're used to thinking about in psychometrics or econometrics and the variable importance we're using here. It comes down to predictive thinking versus measurement/evaluation thinking.

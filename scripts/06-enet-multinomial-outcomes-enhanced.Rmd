@@ -361,5 +361,3 @@ preds1%>%
   mutate(total=rowSums(across(-.pred_class)))%>%
   View()
 ```
-
-The predictions aren't precisely the same because they're being made in the testing dataset. The key here is to be aware of how your multinomial model is parameterized and interpret coefficients accordingly. 

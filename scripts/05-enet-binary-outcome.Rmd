@@ -10,13 +10,13 @@ output: pdf_document
 Regularization can you be used in a wide variety of applications, including for
 binary outcomes. We'll make sure to specify that we're using a model
 for classification instead of a model for regression, and then use a loss function
-appropriate for a binary outcome-- the area under the receiver/operator curve, or AUC.
+appropriate for a binary outcome-- generally the area under the receiver/operator curve, or AUC.
 
-e
 ```{r}
 library(tidyverse)
 library(tidymodels)
 library(janitor)
+library(vip)
 ```
 
 ## Load dataset
@@ -30,7 +30,6 @@ hs<-read_csv("hsls_extract3.csv")%>%
   mutate(attend4yr=fct_relevel(attend4yr))%>%
   select(-x5ps1sec)%>%
   drop_na()
-
 ```
 
 
@@ -45,6 +44,9 @@ hs_test<-testing(hs_split)
 
 ## Understanding Baseline Rate
 
+The absolute first thing we want to do is to understand the baseline rate: what proportion of the training
+dataset is 0 or 1. 
+
 ```{r}
 hs_train%>%
  group_by(attend4yr) %>%
@@ -52,7 +54,14 @@ hs_train%>%
   ungroup()
 ```
 
+So, we'll need to keep in mind for everything else that the proportion of the traning dataset that attends a four-year is .36, and the proportion that does not is .64. 
+
+Any model MUST beat this performance. In this case, I can guarantee 64 percent accuracy simply by assuming no one in the testing dataset goes to college. We want any modeling process to beat this baseline rate-- by a lot. This problem gets harder as the proportions go to 1 or 0.
+
 # Checking the baseline rate against other factors
+
+We can then begin to examine the baseline rate across levels of other factors. Below, I calculate the proportion of the training data that attends a four-year institution by family income. 
+
 ```{r}
  hs_train %>%
   group_by(x1famincome) %>%
@@ -64,6 +73,8 @@ hs_train%>%
   ungroup()%>%
   arrange(-proportion_4yr)
 ```
+
+The relationship is plotted below. 
 
 ```{r}
  hs_train %>%
@@ -83,8 +94,11 @@ hs_train%>%
   theme(legend.position="none")
 ```
 
+Just using this kind of conditional mean approach shows the substantial variation in four-year attendance by income. As we add in more features we *should* be able to improve performance over the baseline. 
 
 ## Recipe
+
+We'll set the recipe the normal way. 
 
 ```{r}
 attend_formula<-as.formula("attend4yr~.")
@@ -97,33 +111,45 @@ hs_rec<-recipe(attend_formula,data=hs_train)%>%
   step_normalize(all_predictors())
 ```
 
+Our model will now be a logistic regression. We'll set up an elastic net approach, tuning both the penalty and the mixture. 
+
 ```{r}
 hs_tune_model<- 
   logistic_reg(penalty=tune(),mixture=tune())%>% 
   set_engine("glmnet")
 ```
 
+Tuning grid looks as before. 
+
 ```{r}
 enet_grid<-grid_regular(extract_parameter_set_dials(hs_tune_model) ,levels=5)
 ```
 
-
+And we'll do our normal small version of monte carlo resampling. 
 ```{r}
 hs_rs<-mc_cv(hs_train,times=25)
 ```
 
 
+We'll combine everything into our workflow as per our normal approach.
 ```{r}
 hs_wf<-workflow()%>%
   add_model(hs_tune_model)%>%
   add_recipe(hs_rec)
 ```
 
+I want four metrics back to understand what's happening: 
+
+- Sensitivity (sens)
+- Specificity (spec)
+- Accuracy (accuracy)
+- Area Under the Receiver/Operator Curve (roc_auc)
 ```{r}
 hs_metrics<-metric_set(sens,spec,accuracy,roc_auc)
 ```
 
 
+Now we'll run the model on the resampled datasets. 
 ```{r}
 hs_tune_fit<-hs_wf%>%
   tune_grid(hs_rs,
@@ -134,6 +160,7 @@ hs_tune_fit<-hs_wf%>%
 
 ## Accuracy, Sensitivity, Specificity, and AUC
 
+We can start by examining all of the metrics across the results. 
 ```{r}
 hs_tune_fit%>% collect_metrics()
 ```
@@ -152,6 +179,7 @@ realistically evaluated, it must be compared with the baseline rate.
 autoplot(hs_tune_fit,metric="accuracy")
 ```
 
+In this case, did we achieve model fits that "beat" the baseline. 
 
 ### Sensitivity
 
@@ -161,7 +189,6 @@ Sensitivity is the probability that a positive outcome is correctly predicted. F
 autoplot(hs_tune_fit,metric="sens")
 ```
 
-
 ### Specificity
 
 Specificity is the probability that a negative outcome is correctly predicted. For our example, this means accurately predicting that someone does NOT go to college (outcome "other"). Sensitivity can be maximized by simply predicting. 
@@ -169,8 +196,6 @@ Specificity is the probability that a negative outcome is correctly predicted. F
 ```{r}
 autoplot(hs_tune_fit,metric="spec")
 ```
-
-
 
 ### What's a "good" model?
 
@@ -207,7 +232,6 @@ Then we fit the best fit model to the full training data.
 hs_final_fit<-hs_final%>%fit(hs_train)
 ```
 
-
 ### Variable importance
 ```{r}
 hs_final_fit%>%
@@ -216,7 +240,6 @@ hs_final_fit%>%
   arrange(-estimate)
 ```
 
-
 Finally, we can make predictions in the testing dataset. I'm using `augment` here, which automates the steps we were previously doing by hand, of adding predictions to the testing data. Note that there are actually three different predictions added, the predicted class, the probability of attendance, and the probability of another outcome. 
 
 ```{r}
@@ -224,7 +247,6 @@ hs_preds<-augment(hs_final_fit,hs_test)%>%
   mutate(across(.cols=c(attend4yr,`.pred_class`),~as_factor(.)))%>%
   mutate(attend4yr=fct_relevel(attend4yr, "attend 4yr","other"))%>%
   mutate(`.pred_class`=fct_relevel(`.pred_class`, "attend 4yr","other"))
-  
 ```
 
 ```{r}
@@ -233,7 +255,6 @@ accuracy(hs_preds,truth=attend4yr,estimate=.pred_class)
 sensitivity(hs_preds,truth=attend4yr,estimate=.pred_class)
 
 specificity(hs_preds,truth=attend4yr,estimate=.pred_class)
-
 ```
 
 

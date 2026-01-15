@@ -339,9 +339,18 @@ hs_wf_full<-
 hs_wf_full%>%
   extract_fit_parsnip()%>%
   tidy()%>%
-  arrange(-abs(estimate))%>%
   slice(-1)%>%
+  arrange(-abs(estimate))%>%
   print(n=100)
+```
+
+```{r}
+hs%>%
+  select(x1control)%>%
+  mutate(public=ifelse(x1control=="Public",1,0))%>%
+  mutate(mean_public=mean(public),
+         sd_public=sd(public),
+         std_public=(public-mean_public)/sd_public)
 ```
 
 

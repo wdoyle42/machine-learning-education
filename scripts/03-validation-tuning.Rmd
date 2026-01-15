@@ -18,7 +18,7 @@ That data that is used to validate our predictions is known as *testing* data. W
 
 One very simple approach to this would be to cut our data in two parts. This is what we've done so far.  We could then train our model on one part of the data, then test it on the other part. This would tell us whether our measure of model fit (e.g. rmse) is similar or different when we apply our model to out of sample data. 
 
-But this would only be a "one-shot" approach. It would be better to do this multiple times, cutting the data into two parts: , then fitting the model to the training data, and then checking its predictions against the validation data set. That way, we could generate a large number of measures of accuracy to see how well the model fits on lots of different possible out-of-sample predictions. 
+But this would only be a "one-shot" approach. It would be better to do this multiple times, cutting the data into two parts, then fitting the model to the training data, and then checking its predictions against the validation data set. That way, we could generate a large number of measures of accuracy to see how well the model fits on lots of different possible out-of-sample predictions. 
 
 This process is called *cross validation*, and it involves two important decisions: first, how will the data be cut, and second,how many times will the validation run?
  
@@ -32,6 +32,7 @@ We'll get everything set up for modeling in the hsls data before structuring the
 library(tidyverse)
 library(tidymodels)
 library(janitor)
+library(vip)
 ```
 
 
@@ -191,14 +192,26 @@ final_model <- final_lasso_workflow %>%
 ```
 
 ```{r}
-predictions <- final_model %>%
-  predict(new_data = hs_test) %>% 
-  bind_cols(hs_test) 
+predictions <-augment(final_model,new_data=hs_test)
 ```
 
 ```{r}
 predictions%>%  
 metrics(truth = x3tgpatot, estimate = .pred)
+```
+
+```{r}
+final_model%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
+  filter(abs(estimate)>0)%>%
+  print(n=nrow(.))
+```
+
+```{r}
+final_model%>%
+  extract_fit_parsnip()%>%
+  vip(num_features=20)
 ```
 
 This represents a completed workflow-- the parameters are set, and the model is deployable.  
@@ -208,7 +221,7 @@ This represents a completed workflow-- the parameters are set, and the model is 
 K-fold cross-validation is a widely used method to evaluate and tune machine learning models by splitting the dataset into 
 k equally sized subsets (folds). It systematically rotates the roles of training and testing datasets to provide robust performance estimates.
 
-How It Works.
+How It Works:
 First, we partition the data:
 
 The dataset is randomly divided into k equal (or nearly equal) folds.
@@ -293,24 +306,43 @@ hs_ridge_tune_fit%>%
 
 And as always, select the best model fit. 
 ```{r}
-best_ridge_penalty<-select_best(hs_ridge_tune_fit)
+best_ridge_penalty <- hs_lasso_tune_fit %>%
+  select_best(metric = "rmse") 
 
-best_ridge_penalty<-best_ridge_penalty$penalty[1]
+final_ridge_workflow <- hs_wf %>%
+  finalize_workflow(best_ridge_penalty)
 
-hs_tune_model<- 
-  linear_reg(penalty=best_ridge_penalty,mixture=mixture_spec)%>% 
-  set_engine("glmnet")
 
-hs_ridge_result<-hs_wf%>%
-  update_model(hs_tune_model)%>%
-  fit(hs_train)
+final_ridge_model <- final_ridge_workflow %>%
+  fit(data = hs_train) 
+
 ```
 
 Examining the coefficients for a ridge regression shows how they're more likely to be "downweighted" as opposed to set to 0 as in lasso, particularly in this case where very low values for the penalty are favored. 
 
 ```{r}
-hs_ridge_result%>%extract_fit_parsnip()%>%tidy()%>%
-  arrange(-abs(estimate))%>%print(n=50)
+final_ridge_model%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
+  filter(abs(estimate)>0)%>%
+  print(n=nrow(.))
 ```
+
+```{r}
+final_ridge_model%>%
+  extract_fit_parsnip()%>%
+  vip(num_features=20)
+```
+
+We can then see how the ridge model did relative to the testing dataset. 
+
+```{r}
+ridge_predict<-augment(final_ridge_model,new_data=hs_test)
+
+predictions%>%  
+metrics(truth = x3tgpatot, estimate = .pred)
+```
+
+The next step will be to combine ridge and lasso, in what's called an elastic net approach. 
 
 

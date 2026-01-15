@@ -263,6 +263,40 @@ So, whereas before we had 36 substantive coefficients, now we have four. That's 
 
 Go back and set the penalty to .01 and rerun the code. What changes in terms of coefficient estimates and rmse?
 
+Answer:
+
+```{r}
+penalty_spec<-.01
+
+mixture_spec<-1
+
+lasso_fit<- 
+  linear_reg(penalty=penalty_spec,
+             mixture=mixture_spec) %>% 
+  set_engine("glmnet")%>%
+  set_mode("regression")
+```
+
+
+
+```{r}
+hs_wf<-hs_wf%>%
+  update_model(lasso_fit)
+
+hs_wf<-hs_wf%>%
+  fit(hs_train)
+```
+
+```{r}
+ hs_test<-augment(hs_wf,hs_test)
+
+hs_test%>%
+  rmse(truth=x3tgpatot,estimate=.pred...2)
+```
+
+
+
+
 ## Quick Exercise 2
 
 Our first kaggle challenge! Minimize the rmse using L1 regularization and/or feature engineering.
