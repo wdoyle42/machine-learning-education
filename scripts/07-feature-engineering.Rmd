@@ -168,7 +168,7 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
 
 Imputation
 
-Imputation in ML is not for inference, but simply to include more data, particularly in interactions. We can use step_
+Imputation in ML is not for inference, but simply to include more data, particularly in interactions. We can use step_impute_mean as one approach.
 ```{r}
 hs_rec<-recipe(hs_formula,data=hs_train)%>%
   update_role(x3tgpatot,new_role = "outcome")%>%
