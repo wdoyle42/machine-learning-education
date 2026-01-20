@@ -23,18 +23,17 @@ Use tables to summarize the outcome **conditional on predictor values**.
   - Optionally include standard errors or confidence intervals if you know how
 - For **continuous predictors**:
   - Create **binned summaries** (e.g., quintiles/deciles) and report mean outcome by bin
-  - Include N per bin
+
 
 ### 4) Graphical analysis
 Include **at least 3–5 figures** that directly answer “how does Y change with X?”
 Examples:
-- Box/violin plots of outcome by categorical predictor
 - Scatterplots (with smoothing line) for outcome vs continuous predictor
 - Binned means plot (mean outcome by predictor bin)
 - If outcome is binary: plots of predicted probability from a simple logistic regression vs X
 
 ### 5) Quantify relationships
-Use at least **two** of the following (more is fine):
+Use at least one of the following (more is fine):
 - **Correlation matrix** (for continuous predictors and continuous outcome)
 - **Simple regressions** (outcome on one predictor at a time) to get an interpretable slope
 - **Multiple regression** (outcome on several predictors) as a descriptive model (not a final ML model)
@@ -51,9 +50,9 @@ Write ~300–600 words summarizing:
 Submit a short document with:
 1. Outcome description + distribution summary
 2. List of selected predictors + brief justification
-3. **At least 2 tables** of conditional summaries
+3. **At least 1 tables** of conditional summaries
 4. **At least 3–5 plots**
-5. **At least 2 quantitative relationship summaries** (correlation/regression/etc.)
+5. **At least 1 quantitative relationship summaries** (correlation/regression/etc.)
 6. A short narrative interpretation
 
 ## Common problems to avoid

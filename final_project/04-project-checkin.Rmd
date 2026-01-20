@@ -1,0 +1,83 @@
+# Check-in 4: End-to-end ML workflow toward a deployable model
+
+## Goal
+Build a complete, reproducible workflow that could realistically be used to generate predictions in practice. You do not need to actually deploy to a live service unless you want to—but you must produce a **deployable artifact** (e.g., saved model + documented input schema + reproducible pipeline).
+
+## What to do
+
+### 1) Define the use case and deployment setting
+- Who would use the model and for what decision?
+- What does a “prediction” look like (output format, timing, frequency)?
+- What constraints matter (latency, interpretability, fairness)?
+
+### 2) Data and preprocessing pipeline (reproducible)
+Create a single workflow/pipeline that handles:
+- Train/test split (and CV on training set as needed)
+- Missing data strategy
+- Encoding for categoricals
+- Scaling/transformations (if needed)
+- Feature engineering (if used)
+- Leakage prevention (make sure no post-outcome features)
+
+Document:
+- Final feature list
+- Input schema (variable names, types, allowable ranges/categories)
+
+### 3) Model selection + tuning plan
+- Define candidate model(s) and the final chosen model.
+- Use a consistent tuning/evaluation procedure (e.g., CV on training set).
+- Justify the choice of final model (performance + simplicity + interpretability + stability).
+
+### 4) Final evaluation and model quality checks
+Provide:
+- Final test-set performance with your primary metrics
+- Calibration check (especially for classification) if applicable
+- Robustness checks:
+  - Sensitivity to preprocessing choices
+  - Performance by key subgroups (if ethically and legally appropriate and variables are available)
+  - Error analysis on worst-performing segment(s)
+
+### 5) Interpretability and communication
+Include one or more:
+- Feature importance / coefficients
+- Example predictions (2–5 cases) with explanation
+- Model limitations: where it should *not* be used
+
+### 6) Deployment artifact(s)
+Produce something that could be used to generate predictions later:
+- Save the fitted pipeline/model object (e.g., `.rds`, `.pkl`, `.joblib`)
+- Provide a function/script/notebook that:
+  1) loads the saved artifact  
+  2) accepts new data in the specified schema  
+  3) outputs predictions in a clean format (CSV or table)
+
+### 7) Monitoring + maintenance plan (short)
+Describe:
+- What you would monitor after deployment (data drift, performance drift, calibration, missingness)
+- Retraining triggers and schedule
+
+
+### 8) Reproducibility checklist
+Your workflow should be runnable by someone else.
+Include:
+- Clear instructions to run end-to-end
+- Fixed random seed(s)
+- Package/environment info
+- File structure or pointers to where artifacts live
+
+## Submission requirements
+Submit a short document (plus any code/artifacts) containing:
+1. Use case + deployment setting (short)
+2. End-to-end pipeline description (preprocessing + leakage controls)
+3. Model selection/tuning approach
+4. Final evaluation results + robustness checks
+5. Interpretability + limitations
+6. Deployable artifact(s): saved model/pipeline + a script/function demonstrating inference on new data
+7. Monitoring/maintenance plan
+8. Reproducibility notes (how to rerun)
+
+## Common problems to avoid
+- Steps that can’t be reproduced (manual edits, undocumented filters)
+- Training-time preprocessing that isn’t applied consistently at inference time
+- No input schema (making deployment ambiguous)
+- No plan for monitoring or retraining

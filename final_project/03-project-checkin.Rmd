@@ -1,0 +1,73 @@
+# Check-in 3: Fit a predictive model and summarize results
+
+## Goal
+Train at least one model to predict your outcome and evaluate how well it performs. This check-in is about demonstrating a defensible modeling process and communicating results clearly.
+
+## What to do
+
+### 1) Define the prediction task and metric(s)
+- Restate the outcome and its type.
+- Choose evaluation metric(s) appropriate to your outcome:
+  - Regression: RMSE/MAE (and optionally R²)
+  - Binary classification: AUC, log loss (cross entropy), accuracy, precision/recall, F1 (choose 1–3 that fit the use case)
+  - Multiclass: accuracy, log loss (cross entropy)
+
+### 2) Set up a proper train/test split (or resampling)
+- Use a **train/test split** and optionally cross-validation on the training set.
+- If time series or grouped data: use an appropriate split (e.g., time-based, group-based).
+
+### 3) Establish a baseline
+- Fit a baseline that is hard to beat:
+  - Regression: predict mean outcome
+  - Classification: predict majority class
+- Report baseline performance using your metric(s).
+
+### 4) Fit at least one “real” model
+Fit at least one predictive model beyond the baseline. Examples:
+- Regularized regression (ridge/lasso/elastic net)
+- Random forest
+- Gradient boosting (XGBoost)
+- SVM,neural net (only if appropriate)
+
+At minimum, clearly document:
+- Features used (and anything you excluded)
+- Any preprocessing you performed (imputation, scaling, encoding)
+- Any tuning approach (even simple grid search)
+
+### 5) Evaluate performance
+Report performance on the **test set** (or held-out validation if you’re doing nested CV).
+Include:
+- A performance table: baseline vs model(s)
+- At least one diagnostic:
+  - Regression: predicted vs actual plot, residual plot, error distribution
+  - Classification: ROC curve, precision–recall curve, confusion matrix
+
+### 6) Interpret the model (at least a little)
+Do one or more:
+- Feature importance (tree models)
+- Coefficients (regularized regression)
+- Partial dependence / ICE (optional)
+- Error analysis: where does the model fail? (subgroups, extreme values, certain categories)
+
+### 7) Short written summary
+Write ~300–600 words covering:
+- What model(s) you tried and why
+- How performance compares to baseline
+- What features seem most influential
+- What you’d do next to improve the model
+
+## Submission requirements
+Submit a short document with:
+1. Prediction task + chosen metric(s)
+2. Data splitting approach
+3. Baseline performance
+4. Model description (preprocessing + algorithm + tuning, if any)
+5. Results: metrics + at least one diagnostic plot (and confusion matrix if classification)
+6. Brief interpretation + error analysis
+7. Short narrative summary
+
+## Common problems to avoid
+- Reporting training performance only (must include test/held-out evaluation)
+- No baseline comparison
+- Unclear preprocessing (especially for missingness/categorical encoding)
+- Overclaiming what the model “means” (this is prediction, not causal inference)
