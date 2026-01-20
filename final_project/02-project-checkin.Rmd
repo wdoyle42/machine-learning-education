@@ -1,0 +1,63 @@
+# Check-in 2: Outcome summary as a function of predictors (EDA)
+
+## Goal
+Describe your **outcome (dependent variable)** and show how it varies with several **independent variables** using both **tabular and graphical** analysis. Use techniques like **conditional means**, **correlations**, and **simple regression** to quantify relationships.
+
+## What to do
+
+### 1) Describe the outcome variable
+- State the outcome variable name and type (continuous / binary / multiclass / count / etc.).
+- Report basic distribution facts:
+  - Missingness (% missing)
+  - If continuous: mean, SD, median, IQR, min/max (or sensible bounds), histogram/density
+  - If binary/multiclass: class proportions, bar chart
+
+### 2) Choose several predictors to examine
+- Select **at least 4–6 independent variables** you think are plausibly related to the outcome.
+- Briefly justify why each is relevant (1 sentence each is enough).
+
+### 3) Tabular analysis: conditional summaries
+Use tables to summarize the outcome **conditional on predictor values**.
+- For **categorical predictors**:
+  - Table of **mean outcome by category** (or % outcome=1 for binary outcomes), plus **N** per group
+  - Optionally include standard errors or confidence intervals if you know how
+- For **continuous predictors**:
+  - Create **binned summaries** (e.g., quintiles/deciles) and report mean outcome by bin
+  - Include N per bin
+
+### 4) Graphical analysis
+Include **at least 3–5 figures** that directly answer “how does Y change with X?”
+Examples:
+- Box/violin plots of outcome by categorical predictor
+- Scatterplots (with smoothing line) for outcome vs continuous predictor
+- Binned means plot (mean outcome by predictor bin)
+- If outcome is binary: plots of predicted probability from a simple logistic regression vs X
+
+### 5) Quantify relationships
+Use at least **two** of the following (more is fine):
+- **Correlation matrix** (for continuous predictors and continuous outcome)
+- **Simple regressions** (outcome on one predictor at a time) to get an interpretable slope
+- **Multiple regression** (outcome on several predictors) as a descriptive model (not a final ML model)
+
+Be explicit about what each statistic is telling you, and avoid causal language.
+
+### 6) Short written interpretation
+Write ~300–600 words summarizing:
+- What stands out about the outcome distribution
+- Which predictors appear most related to the outcome (and in what direction)
+- Any surprises, data issues, or limitations (missingness, outliers, imbalance)
+
+## Submission requirements
+Submit a short document with:
+1. Outcome description + distribution summary
+2. List of selected predictors + brief justification
+3. **At least 2 tables** of conditional summaries
+4. **At least 3–5 plots**
+5. **At least 2 quantitative relationship summaries** (correlation/regression/etc.)
+6. A short narrative interpretation
+
+## Common problems to avoid
+- Only describing the dataset, not the relationship between outcome and predictors
+- Showing plots without labeling axes/units or without interpretation
+- Using one predictor only (pick several)
+- Treating correlation as causation
