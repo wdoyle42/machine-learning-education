@@ -94,7 +94,23 @@ The relationship is plotted below.
   theme(legend.position="none")
 ```
 
-Just using this kind of conditional mean approach shows the substantial variation in four-year attendance by income. As we add in more features we *should* be able to improve performance over the baseline. 
+
+```{r}
+hs_train %>%
+  group_by(x1famincome) %>%
+  summarize(
+    total = n(),
+    p = mean(attend4yr == "attend 4yr", na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  summarize(
+    overall_accuracy = weighted.mean(pmax(p, 1 - p), w = total)
+  )
+```
+
+
+
+Just using this kind of conditional mean approach shows the substantial variation in four-year attendance by income. As we add in more features we *should* be able to improve performance over the baseline and the conditional mean approach. 
 
 ## Recipe
 
@@ -140,10 +156,10 @@ hs_wf<-workflow()%>%
 
 I want four metrics back to understand what's happening: 
 
-- Sensitivity (sens)
-- Specificity (spec)
-- Accuracy (accuracy)
-- Area Under the Receiver/Operator Curve (roc_auc)
+- Sensitivity (sens): what proportion of positive outcomes are correctly predicted?
+- Specificity (spec): what proportion of negative outcomes are correctly predicted?
+- Accuracy (accuracy): what's the overall proportion of correct predictions? 
+- Area Under the Receiver/Operator Curve (roc_auc): more on this later
 ```{r}
 hs_metrics<-metric_set(sens,spec,accuracy,roc_auc)
 ```
@@ -199,7 +215,7 @@ autoplot(hs_tune_fit,metric="spec")
 
 ### What's a "good" model?
 
-This can depend on context. For rare outcomes, accuracy may be enough. In some situations, a model with high sensitivity or specificity may be more desirable. For most cases, we'd like a model where sensitivity and specificity remain high regardless of threshold used. 
+This can depend on context. For rare outcomes, accuracy may be enough. In some situations, a model with high sensitivity or specificity may be more desirable. For most cases, we'd like a model where sensitivity and specificity remain high regardless of threshold used. Enter the AUC!
 
 ### The ROC AUC
 
