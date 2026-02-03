@@ -18,17 +18,17 @@ January 20, 2026 Elastic net for binary outcomes
 
 January 22, 2026 Further adventures in feature engineering
 
-January 27, 2026  Elastic net for multinomial outcomes
+January 27, 2026  
 
-January 29, 2026 More cross-validation approaches: simulated annealing, Bayesian optimization
+January 29, 2026 
 
-February 3, 2026 Intro to SVM
+February 3, 2026 Elastic net for multinomial outcomes
 
-February 5, 2026 SVM part 2: the kernel trick
+February 5, 2026 More cross-validation approaches: simulated annealing, Bayesian optimization
 
-February 10, 2026 SVM part 3: Tuning hyperparameters
+February 10, 2026 Intro to SVM and kernels
 
-February 12, 2026 SVM 4: Deploying 
+February 12, 2026 SVM part 2: Tuning hyperparameters and Deploying
 
 February 17, 2026 Intro to tree-based models 
 
