@@ -24,11 +24,11 @@ January 29, 2026  The ice storm, part 2
 
 February 3, 2026 Elastic net for multinomial outcomes
 
-February 5, 2026 More cross-validation approaches: simulated annealing, Bayesian optimization
+February 5, 2026 More cross-validation approaches: simulated annealing, Bayesian optimization; fun with feature engineering
 
 February 10, 2026 Intro to SVM and kernels
 
-February 12, 2026 SVM part 2: Tuning hyperparameters and Deploying
+February 12, 2026 SVM part 2: Tuning hyperparameters in SVM  and Deploying
 
 February 17, 2026 Intro to tree-based models 
 
