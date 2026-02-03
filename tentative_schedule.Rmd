@@ -16,11 +16,11 @@ January 15, 2026 Tuning Hyperparameters via Cross Validation
 
 January 20, 2026 Elastic net for binary outcomes
 
-January 22, 2026 Further adventures in feature engineering
+January 22, 2026 Binary Outcomes, continued
 
-January 27, 2026  
+January 27, 2026  The ice storm, part 1
 
-January 29, 2026 
+January 29, 2026  The ice storm, part 2
 
 February 3, 2026 Elastic net for multinomial outcomes
 
