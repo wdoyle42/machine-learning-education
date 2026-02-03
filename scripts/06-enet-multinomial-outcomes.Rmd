@@ -460,13 +460,9 @@ sum_to_zero_constraint_mnl<-multinom_reg(penalty=0,mixture=1)%>%
 
 The code below demonstrates the difference between these approaches by
 fitting both types of models and comparing their predictions. We create
-<<<<<<< HEAD
-a dataset with mean or mode values for all predictors to see what the
-baseline predictions would be.
-=======
-a dataset with mean values for all predictors to see what the baseline
+a dataset with mean or mode values for all predictors to see what the baseline
 predictions would be.
->>>>>>> 7ff32a75831a2cc5c870a5edcbcc9d82128d28cf
+
 
 ```{r}
 
