@@ -39,7 +39,6 @@ The key concept to understand in exploring all of the available hyperparameter s
 -   **Goal**: Improve model performance by fine-tuning the best-known configurations.
 
 -   **Methods for Encouraging Exploitation**:
-<<<<<<< HEAD
 
     -   **Grid Search with Small Steps**: Tests small variations around the best-known parameters.
 
@@ -61,13 +60,6 @@ The key concept to understand in exploring all of the available hyperparameter s
     
     -   **Simulated Annealing with Low Cooling Coefficient**: Reduces the probability of accepting worse solutions as iterations progress.
 
-**When to Favor Exploitation?** 
-
-- When **early tuning** suggests a strong candidate region.
-
-- When computational resources are limited, and fine-tuning is more efficient.
-
-- When the **hyperparameter space is well-behaved** (e.g., smooth and convex).
 
 ## **The Tradeoff: Finding the Right Balance**
 
@@ -290,11 +282,7 @@ It balances **exploration (trying new regions)** and **exploitation (focusing on
 
     -   When the goal is to **refine existing good hyperparameters** while still allowing some exploration.
 
--   **Example in `tidymodels`**:
 
-    ``` r
-    tune_bayes(..., objective = exp_improve())
-    ```
 
 ------------------------------------------------------------------------
 
@@ -327,15 +315,6 @@ It balances **exploration (trying new regions)** and **exploitation (focusing on
     -   Considers both **high predicted performance** and **high uncertainty**.
 -   **Use Case**:
     -   When the hyperparameter space is **large and complex**, requiring **broader exploration**.
-
-## **Comparing Acquisition Functions**
-
-| Acquisition Function | Focus | Strengths | Weaknesses |
-|------------------------|----------------|----------------|----------------|
-
-Bayesian Optimization is a **probabilistic model-based approach** for hyperparameter tuning that efficiently balances **exploration** (searching new areas) and **exploitation** (refining the best-known solutions). Unlike brute-force methods such as grid search or random search, Bayesian Optimization constructs a **surrogate model** (often a Gaussian Process) to predict performance and guide the search intelligently.
-
-This method is particularly useful for **complex, high-dimensional hyperparameter spaces**, where evaluating every possible combination would be computationally expensive.
 
 ```{r}
 hs_control_bayes<-control_bayes(verbose=TRUE)
@@ -376,3 +355,4 @@ predictions <- final_model %>% augment(hs_test)
 predictions%>%roc_auc(`.pred_attend 4yr` ,truth=attend4yr)
 ```
 
+Notice that with both tuning approaches we're able to substantially improve roc auc over grid search. 

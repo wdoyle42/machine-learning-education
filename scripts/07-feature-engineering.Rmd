@@ -21,7 +21,7 @@ library(janitor)
 ```
 
 
-## Transformations
+
 
 
 ```{r}
@@ -42,12 +42,17 @@ hs_test<-testing(hs_split)
 ```
 
 
+For a super-helpful list of all of the steps available in recipes, see:
+
+https://www.tidymodels.org/find/recipes/
+
+
+## Transformations
 
 Transformations refer to any kind of numeric transformation. The key here is linear versus non-linear transforms. Linear transforms just aid in interpretability or ensure identical scales for regularizations. Non-linear transforms are a modeling choice-- they make a fundamental change in how the model works. 
 
 Below, we use step_normalize as a linear transform for all predictors. 
 
-https://www.tidymodels.org/find/recipes/
 
 ```{r}
 hs_formula<-as.formula("x3tgpatot~.")
@@ -128,8 +133,7 @@ predictions%>%rmse(truth=x3tgpatot,estimate=.pred)
 ```
 
 
-
-We can also log and/or offset
+We can also log and/or offset. Remember always that this is a *modeling* decision, which alters the relationship between the indepdendet and dependent variable. 
 
 ```{r}
 hs_rec<-recipe(hs_formula,data=hs_train)%>%
@@ -140,6 +144,13 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_zv(all_predictors())%>%
   step_normalize(all_predictors())
 ```
+
+If you have a variable where you'd like to do a percentile-like transformation but you have 0 and/or negative values, you can use use `step_hyperbolic`
+
+```{r}
+## step_hyperbolic(all_numeric_predictors(), func="sin")
+```
+
 
 ### Categorical and binary variables
 
@@ -164,7 +175,6 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_zv(all_predictors())%>%
   step_normalize(all_predictors())
 ```
-
 
 Imputation
 
@@ -195,7 +205,7 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
 
 ### Interactions and Expansions
 
-We can interact continuous with continuous
+We can interact continuous with continuous variables:
 ```{r}
 hs_rec<-recipe(hs_formula,data=hs_train)%>%
   update_role(x3tgpatot,new_role = "outcome")%>%
@@ -208,7 +218,7 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_normalize(all_predictors())
 ```
 
-We can interact continuous with with binary
+We can interact continuous with with binary variables:
 ```{r}
 hs_rec<-recipe(hs_formula,data=hs_train)%>%
   update_role(x3tgpatot,new_role = "outcome")%>%
@@ -220,7 +230,7 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_normalize(all_predictors())
 ```
 
-And binary with binary
+And binary with binary variables:
 
 ```{r}
 hs_rec<-recipe(hs_formula,data=hs_train)%>%
@@ -231,7 +241,7 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_normalize(all_predictors())
 ```
 
-Polynomial expansions can be done on any numeric variable, specifying the degreee of the expansion
+Polynomial expansions can be done on any numeric variable, specifying the degreee of the expansion: 
 
 ```{r}
 hs_rec<-recipe(hs_formula,data=hs_train)%>%
@@ -242,10 +252,6 @@ hs_rec<-recipe(hs_formula,data=hs_train)%>%
   step_normalize(all_predictors())
 ```
 
-
-
-
-### In class work
 
 
 

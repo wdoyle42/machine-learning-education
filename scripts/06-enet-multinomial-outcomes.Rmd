@@ -161,7 +161,8 @@ discussed before.
 ```{r}
 hs_tune_model<- 
   multinom_reg(penalty=tune(),mixture=tune())%>% 
-  set_engine("glmnet")
+  set_engine("glmnet")%>%
+  set_mode("classification")
 ```
 
 The `grid_regular` command creates a grid of parameter values to try.
@@ -253,6 +254,9 @@ between categories.
 
 ```{r}
 autoplot(hs_tune_fit,metric="roc_auc")
+
+autoplot(hs_tune_fit,metric="accuracy")
+
 ```
 
 ## Fitting the model
@@ -329,8 +333,24 @@ hs_final_fit%>%
 hs_final_fit%>%
   extract_fit_parsnip()%>%
   tidy()%>%
+  group_by(class)%>%
+  filter(term=="x1txmtscor")%>%
+  ungroup()%>%
+  summarize(sum(estimate))
+
+
+hs_final_fit%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
   filter(class=="2-year, public")%>%
   arrange(-abs(estimate))
+
+hs_final_fit%>%
+  extract_fit_parsnip()%>%
+  tidy()%>%
+  filter(class=="other")%>%
+  arrange(-abs(estimate))
+  
   
 
 
@@ -357,6 +377,11 @@ hs_preds<-augment(hs_final_fit,hs_test)%>%
 hs_preds%>%
   select(1:6)%>%
   View()
+
+hs_preds%>%
+  filter( `.pred_2-year, public` >.25 &  `.pred_other`>.25)%>%
+  select(`.pred_2-year, public`, `.pred_other`)
+
 ```
 
 The overall accuracy tells us what proportion of students we correctly
