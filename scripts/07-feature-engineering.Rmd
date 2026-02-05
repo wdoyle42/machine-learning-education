@@ -1,8 +1,8 @@
 ---
 title: "Adventures in Feature Engineering"
 author: "Will Doyle"
-date: "2025-01-30"
-output: html_document
+date: "2026-02-05"
+output: github_document
 ---
 
 ## Feature Engineering

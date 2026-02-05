@@ -1,7 +1,7 @@
 ---
 title: "Approaches to Hyperparameter Tuning"
 author: "Will Doyle"
-date: "2025-02-04"
+date: "2026-02-05"
 output: github_document
 editor_options: 
   markdown: 
@@ -187,7 +187,9 @@ Key Elements in `Tidymodels`
 
 ```{r}
 
-hs_sim_anneal_control<-control_sim_anneal(cooling_coef=.02)
+hs_sim_anneal_control<-control_sim_anneal(cooling_coef=.02,
+                                          verbose = TRUE,
+                                          save_history = TRUE)
                                           
 hs_enet_tune_fit <- 
   hs_wf %>%
@@ -197,6 +199,29 @@ hs_enet_tune_fit <-
                     control=hs_sim_anneal_control)
 
 ```
+
+```{r}
+load(file.path(tempdir(), "sa_history.RData"))
+
+result_history
+
+
+px <- sort(unique(result_history$penalty))
+my <- sort(unique(result_history$mixture))
+
+fmt4 <- function(x) format(signif(x, 4), trim = TRUE, scientific = FALSE)
+
+
+result_history%>%
+    mutate(
+    penalty_f = factor(penalty, levels = px, labels = fmt4(px)),
+    mixture_f = factor(mixture, levels = my, labels = fmt4(my))
+  ) %>%
+ggplot(aes(x=penalty_f,y=mixture_f,fill=mean))+
+  geom_tile()
+
+```
+
 
 ## Exploring Results
 
