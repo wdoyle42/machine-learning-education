@@ -1,30 +1,33 @@
----
-title: "Support Vector Machines"
-author: "Will Doyle"
-date: "2025-02-25"
-output: github_document
----
+Support Vector Machines
+================
+Will Doyle
+2025-02-25
 
 ### **Support Vector Machines (SVM)**
 
 #### **1. Introduction**
 
-Support Vector Machines (SVMs) are a powerful class of supervised learning models used for classification and regression tasks. They are particularly effective in high-dimensional spaces. SVMs work by finding the optimal hyperplane that best separates classes in a dataset.
+Support Vector Machines (SVMs) are a powerful class of supervised
+learning models used for classification and regression tasks. They are
+particularly effective in high-dimensional spaces. SVMs work by finding
+the optimal hyperplane that best separates classes in a dataset.
 
 ------------------------------------------------------------------------
 
 ### **2. Key Concept: The Optimal Hyperplane**
 
-For a **binary classification** problem, SVM aims to find the **decision boundary** (hyperplane) that maximizes the margin between two classes.
+For a **binary classification** problem, SVM aims to find the **decision
+boundary** (hyperplane) that maximizes the margin between two classes.
 
--   The **hyperplane** is defined as: $$
-    w \cdot x + b = 0
-    $$ where:
-    -   $w$ is the **weight vector** (direction of separation),
-    -   $x$ represents the **feature values**,
-    -   $b$ is the **bias term** (intercept).
--   The margin is the distance between the hyperplane and the nearest data points (support vectors).
--   The larger the margin, the better the generalization of the model.
+- The **hyperplane** is defined as: $$
+  w \cdot x + b = 0
+  $$ where:
+  - $w$ is the **weight vector** (direction of separation),
+  - $x$ represents the **feature values**,
+  - $b$ is the **bias term** (intercept).
+- The margin is the distance between the hyperplane and the nearest data
+  points (support vectors).
+- The larger the margin, the better the generalization of the model.
 
 #### **Finding the Best Hyperplane**
 
@@ -38,84 +41,177 @@ $$ where $y_i$ is the class label ($+1$ or $-1$).
 
 ### **3. Support Vectors: The Most Informative Points**
 
-Support vectors are the critical data points that lie closest to the decision boundary and directly influence its position—these are the points that sit exactly on the margin boundaries in a perfectly separable case, or those that violate the margin (including misclassified points) when using a soft-margin SVM that tolerates some error. What makes SVMs particularly elegant is that they ignore all other data points during training, focusing exclusively on these support vectors to define the decision boundary. This selective attention makes SVMs remarkably robust to outliers and effective in high-dimensional spaces, since the algorithm isn't swayed by the bulk of the data that lies far from the boundary. However, this also means that in practice, the effective sample size used for estimation can be dramatically reduced—sometimes only a small fraction of your original dataset actually influences the final model, which can be both a computational advantage and a potential concern depending on your data distribution.
+Support vectors are the **critical data points** that define the margin.
+These are: - **Points on the margin boundaries**. - **Misclassified
+points (in soft-margin SVMs)**.
+
+SVM ignores **non-critical points** in training, which makes it robust
+to outliers and high-dimensional data. This last point means that it
+will many times reduce the effective sample used for estimation by quite
+a bit.
+
 ------------------------------------------------------------------------
 
-### **4. Hard-Margin vs. Soft-Margin SVM**
+### **4. Hard-Margin vs. Soft-Margin SVM**
 
 #### **Hard-Margin SVM (No Overlapping Classes)**
 
--   Assumes that data is **perfectly separable**.
--   The margin is strictly enforced, allowing **no misclassifications**.
--   Solves: $$
-    \min_{w, b} \quad \frac{1}{2} ||w||^2
-    $$ subject to $y_i (w \cdot x_i + b) \geq 1$.
+- Assumes that data is **perfectly separable**.
+- The margin is strictly enforced, allowing **no misclassifications**.
+- Solves: $$
+  \min_{w, b} \quad \frac{1}{2} ||w||^2
+  $$ subject to $y_i (w \cdot x_i + b) \geq 1$.
 
 #### **Soft-Margin SVM (Overlapping Classes)**
 
--   Allows for some misclassifications using **slack variables** $\xi_i$.
--   Trades off **margin width** and **classification errors** via **cost parameter** $C$.
--   Solves: $$
-    \min_{w, b} \quad \frac{1}{2} ||w||^2 + C \sum_{i=1}^{N} \xi_i
-    $$ where $\xi_i \geq 0$ allows points to be inside the margin or misclassified.
+- Allows for some misclassifications using **slack variables** $\xi_i$.
+- Trades off **margin width** and **classification errors** via **cost
+  parameter** $C$.
+- Solves: $$
+  \min_{w, b} \quad \frac{1}{2} ||w||^2 + C \sum_{i=1}^{N} \xi_i
+  $$ where $\xi_i \geq 0$ allows points to be inside the margin or
+  misclassified.
 
 ------------------------------------------------------------------------
 
 ### **5. Nonlinear SVM: The Kernel Trick**
 
-Many real-world datasets are not linearly separable. SVMs handle this using the kernel trick, which maps the input space into a higher-dimensional space where the data is separable.
+Many real-world datasets are not linearly separable. SVMs handle this
+using the kernel trick, which maps the input space into a
+higher-dimensional space where the data is separable.
 
 **Common kernel functions**: - **Linear kernel**: $$
   K(x_i, x_j) = x_i \cdot x_j
   $$ Used for linearly separable data.
 
--   **Polynomial kernel**: $$
-    K(x_i, x_j) = (x_i \cdot x_j + c)^d
-    $$ Used for curved decision boundaries.
+- **Polynomial kernel**: $$
+  K(x_i, x_j) = (x_i \cdot x_j + c)^d
+  $$ Used for curved decision boundaries.
 
--   **Radial Basis Function (RBF) kernel**: $$
-    K(x_i, x_j) = \exp\left(-\gamma ||x_i - x_j||^2 \right)
-    $$ Handles complex decision boundaries by mapping data into an n-dimensional space.
+- **Radial Basis Function (RBF) kernel**: $$
+  K(x_i, x_j) = \exp\left(-\gamma ||x_i - x_j||^2 \right)
+  $$ Handles complex decision boundaries by mapping data into an
+  n-dimensional space.
 
-RBF is flexible enough that it's used unless the function is kind of obviously linear.
+RBF is flexible enough that it’s used unless the function is kind of
+obviously linear.
 
 ### **7. Hyperparameters in SVM**
 
--   **Cost parameter** $C$:
-    -   **High** $C$ : Small margin, fewer misclassifications (risk of overfitting).
-    -   **Low** $C$ : Large margin, allows some misclassifications (better generalization).
--   **Kernel-specific parameters**:
-    -   **RBF kernel (**$\gamma$):
-        -   **High** $\gamma$ → More flexible decision boundary (risk of overfitting).
-        -   **Low** $\gamma$ → Simpler decision boundary (risk of underfitting).
--   **Polynomial Kernel** -\*\*Value of the polynomial expansion ---
+- **Cost parameter** $C$:
+  - **High** $C$ : Small margin, fewer misclassifications (risk of
+    overfitting).
+  - **Low** $C$ : Large margin, allows some misclassifications (better
+    generalization).
+- **Kernel-specific parameters**:
+  - **RBF kernel (**$\gamma$):
+    - **High** $\gamma$ → More flexible decision boundary (risk of
+      overfitting).
+    - **Low** $\gamma$ → Simpler decision boundary (risk of
+      underfitting).
+- **Polynomial Kernel** -\*\*Value of the polynomial expansion —
 
 ## Example 1: Linear Response function
 
-```{r}
+``` r
 library(tidyverse)
-library(tidymodels)
-library(e1071)
-library(kernlab)
-library(patchwork)
 ```
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
+    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+    ## ✔ dplyr     1.1.4     ✔ readr     2.1.5
+    ## ✔ forcats   1.0.0     ✔ stringr   1.6.0
+    ## ✔ ggplot2   4.0.0     ✔ tibble    3.3.0
+    ## ✔ lubridate 1.9.4     ✔ tidyr     1.3.1
+    ## ✔ purrr     1.1.0     
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+    ## ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+
+``` r
+library(tidymodels)
+```
+
+    ## ── Attaching packages ────────────────────────────────────── tidymodels 1.4.1 ──
+    ## ✔ broom        1.0.10     ✔ rsample      1.3.1 
+    ## ✔ dials        1.4.2      ✔ tailor       0.1.0 
+    ## ✔ infer        1.0.9      ✔ tune         2.0.1 
+    ## ✔ modeldata    1.5.1      ✔ workflows    1.3.0 
+    ## ✔ parsnip      1.3.3      ✔ workflowsets 1.1.1 
+    ## ✔ recipes      1.3.1      ✔ yardstick    1.3.2 
+    ## ── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
+    ## ✖ scales::discard() masks purrr::discard()
+    ## ✖ dplyr::filter()   masks stats::filter()
+    ## ✖ recipes::fixed()  masks stringr::fixed()
+    ## ✖ dplyr::lag()      masks stats::lag()
+    ## ✖ yardstick::spec() masks readr::spec()
+    ## ✖ recipes::step()   masks stats::step()
+
+``` r
+library(e1071)
+```
+
+    ## 
+    ## Attaching package: 'e1071'
+    ## 
+    ## The following object is masked from 'package:tune':
+    ## 
+    ##     tune
+    ## 
+    ## The following object is masked from 'package:rsample':
+    ## 
+    ##     permutations
+    ## 
+    ## The following object is masked from 'package:parsnip':
+    ## 
+    ##     tune
+    ## 
+    ## The following object is masked from 'package:ggplot2':
+    ## 
+    ##     element
+
+``` r
+library(kernlab)
+```
+
+    ## 
+    ## Attaching package: 'kernlab'
+    ## 
+    ## The following object is masked from 'package:dials':
+    ## 
+    ##     buffer
+    ## 
+    ## The following object is masked from 'package:scales':
+    ## 
+    ##     alpha
+    ## 
+    ## The following object is masked from 'package:purrr':
+    ## 
+    ##     cross
+    ## 
+    ## The following object is masked from 'package:ggplot2':
+    ## 
+    ##     alpha
+
+``` r
+library(patchwork)
 ```
 
 # Introduction
 
-This document demonstrates how Support Vector Machines (SVMs) work "under the hood" and illustrates the kernel trick. We'll work with two scenarios:
+This document demonstrates how Support Vector Machines (SVMs) work
+“under the hood” and illustrates the kernel trick. We’ll work with two
+scenarios:
 
 1.  **Linear Separation**: Data that can be separated by a straight line
 2.  **Polynomial Separation**: Data that requires a curved boundary
 
-For the polynomial, we'll fit both a polynomial kernel and an rbf kernel.
+For the polynomial, we’ll fit both a polynomial kernel and an rbf
+kernel.
 
 # Load Libraries
 
-```{r theme}
+``` r
 # Set theme for consistent plotting
 theme_set(theme_minimal(base_size = 12))
 ```
@@ -124,7 +220,7 @@ theme_set(theme_minimal(base_size = 12))
 
 ## Generate Linearly Separable Data
 
-```{r linear-data}
+``` r
 # Generate linearly separable data with overlap
 n <- 200
 
@@ -148,20 +244,29 @@ ggplot(linear_data, aes(x = x1, y = x2, color = class)) +
   coord_fixed()
 ```
 
+![](09-svm_files/figure-gfm/linear-data-1.png)<!-- -->
+
 ## Split Data
 
-```{r linear-split}
+``` r
 linear_split <- initial_split(linear_data, prop = 0.75, strata = class)
 linear_train <- training(linear_split)
 linear_test <- testing(linear_split)
 
 cat("Training set:", nrow(linear_train), "observations\n")
+```
+
+    ## Training set: 149 observations
+
+``` r
 cat("Testing set:", nrow(linear_test), "observations\n")
 ```
 
+    ## Testing set: 51 observations
+
 ## Fit Linear SVM
 
-```{r linear-svm}
+``` r
 # Define model specification
 svm_linear_spec <- svm_poly(
   cost = 1,
@@ -186,7 +291,7 @@ svm_linear_model <- extract_fit_engine(svm_linear_fit)
 
 ## Visualize Linear Decision Boundary
 
-```{r linear-boundary}
+``` r
 # Create prediction grid
 grid_linear <- expand_grid(
   x1 = seq(min(linear_data$x1) - 0.5, max(linear_data$x1) + 0.5, length.out = 200),
@@ -219,9 +324,11 @@ p_linear <- ggplot() +
 print(p_linear)
 ```
 
+![](09-svm_files/figure-gfm/linear-boundary-1.png)<!-- -->
+
 ## Linear SVM: Test Set Performance
 
-```{r linear-test}
+``` r
 # Predictions on test set
 linear_test_pred <- linear_test %>%
   bind_cols(predict(svm_linear_fit, new_data = linear_test)) %>%
@@ -232,7 +339,14 @@ conf_mat_linear <- linear_test_pred %>%
   conf_mat(truth = class, estimate = .pred_class)
 
 print(conf_mat_linear)
+```
 
+    ##           Truth
+    ## Prediction  A  B
+    ##          A  6  7
+    ##          B 12 26
+
+``` r
 # Calculate metrics
 linear_metrics <- linear_test_pred %>%
   metrics(truth = class, estimate = .pred_class, .pred_A) %>%
@@ -242,28 +356,49 @@ linear_metrics <- linear_test_pred %>%
 print(linear_metrics)
 ```
 
+    ## # A tibble: 4 × 2
+    ##   .metric     .estimate
+    ##   <chr>           <dbl>
+    ## 1 accuracy        0.627
+    ## 2 kap             0.129
+    ## 3 mn_log_loss     0.49 
+    ## 4 roc_auc         0.81
+
 ## How Linear Kernel Works
 
-The linear kernel computes similarity between points as a simple dot product:
+The linear kernel computes similarity between points as a simple dot
+product:
 
 $$K(x_i, x_j) = x_i^T x_j$$
 
-For our 2D data: $K(x_i, x_j) = x_{i1} \cdot x_{j1} + x_{i2} \cdot x_{j2}$
+For our 2D data:
+$K(x_i, x_j) = x_{i1} \cdot x_{j1} + x_{i2} \cdot x_{j2}$
 
-The decision function is: $$f(x) = \sum_{i=1}^{n} \alpha_i y_i K(x_i, x) + b$$
+The decision function is:
+$$f(x) = \sum_{i=1}^{n} \alpha_i y_i K(x_i, x) + b$$
 
-where $\alpha_i$ are learned weights (support vectors have $\alpha_i > 0$).
+where $\alpha_i$ are learned weights (support vectors have
+$\alpha_i > 0$).
 
-```{r linear-kernel-demo}
+``` r
 # Extract support vectors - kernlab stores indices as a matrix
 sv_info <- alphaindex(svm_linear_model)
 sv_indices <- as.vector(sv_info[[1]])  # Convert to vector
 support_vectors <- linear_train %>% slice(sv_indices)
 
 cat("Number of support vectors:", length(sv_indices), "\n")
+```
+
+    ## Number of support vectors: 72
+
+``` r
 cat("Percentage of training data:", 
     round(100 * length(sv_indices) / nrow(linear_train), 1), "%\n")
+```
 
+    ## Percentage of training data: 48.3 %
+
+``` r
 # Visualize support vectors
 ggplot() +
   geom_point(data = linear_train, 
@@ -278,11 +413,13 @@ ggplot() +
   coord_fixed()
 ```
 
+![](09-svm_files/figure-gfm/linear-kernel-demo-1.png)<!-- -->
+
 # Part 2: Polynomial Separation
 
 ## Generate Polynomial Separable Data
 
-```{r poly-data}
+``` r
 # Generate data with quadratic boundary and overlap
 n <- 200
 
@@ -306,9 +443,11 @@ ggplot(poly_data, aes(x = x1, y = x2, color = class)) +
   coord_fixed()
 ```
 
+![](09-svm_files/figure-gfm/poly-data-1.png)<!-- -->
+
 ## Split Data
 
-```{r poly-split}
+``` r
 poly_split <- initial_split(poly_data, prop = 0.75, strata = class)
 poly_train <- training(poly_split)
 poly_test <- testing(poly_split)
@@ -316,7 +455,7 @@ poly_test <- testing(poly_split)
 
 ## Fit Polynomial SVM
 
-```{r poly-svm}
+``` r
 # Define polynomial SVM specification
 svm_poly_spec <- svm_poly(
   cost = 1,
@@ -341,7 +480,7 @@ svm_poly_model <- extract_fit_engine(svm_poly_fit)
 
 ## Visualize Polynomial Decision Boundary
 
-```{r poly-boundary}
+``` r
 # Create prediction grid
 grid_poly <- expand_grid(
   x1 = seq(min(poly_data$x1) - 0.2, max(poly_data$x1) + 0.2, length.out = 200),
@@ -374,9 +513,11 @@ p_poly <- ggplot() +
 print(p_poly)
 ```
 
+![](09-svm_files/figure-gfm/poly-boundary-1.png)<!-- -->
+
 ## Polynomial SVM: Test Set Performance
 
-```{r poly-test}
+``` r
 # Predictions on test set
 poly_test_pred <- poly_test %>%
   bind_cols(predict(svm_poly_fit, new_data = poly_test)) %>%
@@ -387,7 +528,14 @@ conf_mat_poly <- poly_test_pred %>%
   conf_mat(truth = class, estimate = .pred_class)
 
 print(conf_mat_poly)
+```
 
+    ##           Truth
+    ## Prediction  A  B
+    ##          A 21  2
+    ##          B  2 26
+
+``` r
 # Calculate metrics
 poly_metrics <- poly_test_pred %>%
   metrics(truth = class, estimate = .pred_class, .pred_A) %>%
@@ -397,6 +545,14 @@ poly_metrics <- poly_test_pred %>%
 print(poly_metrics)
 ```
 
+    ## # A tibble: 4 × 2
+    ##   .metric     .estimate
+    ##   <chr>           <dbl>
+    ## 1 accuracy        0.922
+    ## 2 kap             0.842
+    ## 3 mn_log_loss     0.165
+    ## 4 roc_auc         0.986
+
 ## How Polynomial Kernel Works
 
 The polynomial kernel of degree $d$ is:
@@ -405,20 +561,33 @@ $$K(x_i, x_j) = (x_i^T x_j + c)^d$$
 
 For degree 2: $K(x_i, x_j) = (x_{i1} x_{j1} + x_{i2} x_{j2} + c)^2$
 
-This is equivalent to explicitly transforming the data to higher dimensions, but **without actually computing the transformation**! This is the "kernel trick."
+This is equivalent to explicitly transforming the data to higher
+dimensions, but **without actually computing the transformation**! This
+is the “kernel trick.”
 
-For 2D input with degree 2, the implicit feature space includes: - Original features: $x_1, x_2$ - Squared features: $x_1^2, x_2^2$ - Interaction: $x_1 x_2$ - Plus constant terms
+For 2D input with degree 2, the implicit feature space includes: -
+Original features: $x_1, x_2$ - Squared features: $x_1^2, x_2^2$ -
+Interaction: $x_1 x_2$ - Plus constant terms
 
-```{r poly-kernel-demo}
+``` r
 # Extract support vectors - kernlab stores indices as a matrix
 sv_info_poly <- alphaindex(svm_poly_model)
 sv_indices_poly <- as.vector(sv_info_poly[[1]])  # Convert to vector
 support_vectors_poly <- poly_train %>% slice(sv_indices_poly)
 
 cat("Number of support vectors:", length(sv_indices_poly), "\n")
+```
+
+    ## Number of support vectors: 38
+
+``` r
 cat("Percentage of training data:", 
     round(100 * length(sv_indices_poly) / nrow(poly_train), 1), "%\n")
+```
 
+    ## Percentage of training data: 25.5 %
+
+``` r
 # Visualize support vectors
 ggplot() +
   geom_point(data = poly_train, 
@@ -433,13 +602,17 @@ ggplot() +
   coord_fixed()
 ```
 
+![](09-svm_files/figure-gfm/poly-kernel-demo-1.png)<!-- -->
+
 # Part 3: RBF (Radial Basis Function) Kernel
 
-The RBF kernel is another popular choice for non-linear problems. It's especially powerful because it can create very flexible decision boundaries.
+The RBF kernel is another popular choice for non-linear problems. It’s
+especially powerful because it can create very flexible decision
+boundaries.
 
 ## Fit RBF SVM on Polynomial Data
 
-```{r rbf-svm}
+``` r
 # Define RBF SVM specification
 svm_rbf_spec <- svm_rbf(
   cost = 1,
@@ -463,7 +636,7 @@ svm_rbf_model <- extract_fit_engine(svm_rbf_fit)
 
 ## Visualize RBF Decision Boundary
 
-```{r rbf-boundary}
+``` r
 # Get predictions on grid
 grid_rbf_pred <- grid_poly %>%
   bind_cols(
@@ -490,9 +663,11 @@ p_rbf <- ggplot() +
 print(p_rbf)
 ```
 
+![](09-svm_files/figure-gfm/rbf-boundary-1.png)<!-- -->
+
 ## RBF SVM: Test Set Performance
 
-```{r rbf-test}
+``` r
 # Predictions on test set
 rbf_test_pred <- poly_test %>%
   bind_cols(predict(svm_rbf_fit, new_data = poly_test)) %>%
@@ -503,7 +678,14 @@ conf_mat_rbf <- rbf_test_pred %>%
   conf_mat(truth = class, estimate = .pred_class)
 
 print(conf_mat_rbf)
+```
 
+    ##           Truth
+    ## Prediction  A  B
+    ##          A 21  1
+    ##          B  2 27
+
+``` r
 # Calculate metrics
 rbf_metrics <- rbf_test_pred %>%
   metrics(truth = class, estimate = .pred_class, .pred_A) %>%
@@ -513,28 +695,51 @@ rbf_metrics <- rbf_test_pred %>%
 print(rbf_metrics)
 ```
 
+    ## # A tibble: 4 × 2
+    ##   .metric     .estimate
+    ##   <chr>           <dbl>
+    ## 1 accuracy        0.941
+    ## 2 kap             0.881
+    ## 3 mn_log_loss     0.163
+    ## 4 roc_auc         0.988
+
 ## How RBF Kernel Works
 
-The RBF (Radial Basis Function) kernel, also called the Gaussian kernel, is:
+The RBF (Radial Basis Function) kernel, also called the Gaussian kernel,
+is:
 
 $$K(x_i, x_j) = \exp\left(-\gamma \|x_i - x_j\|^2\right)$$
 
-where $\gamma$ controls the influence of each training example. The kernel measures similarity based on Euclidean distance - points close together have similarity near 1, while distant points have similarity near 0.
+where $\gamma$ controls the influence of each training example. The
+kernel measures similarity based on Euclidean distance - points close
+together have similarity near 1, while distant points have similarity
+near 0.
 
-For our 2D data: $$K(x_i, x_j) = \exp\left(-\gamma [(x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2]\right)$$
+For our 2D data:
+$$K(x_i, x_j) = \exp\left(-\gamma [(x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2]\right)$$
 
-The RBF kernel implicitly maps data to an **infinite-dimensional space** but still computes similarities efficiently!
+The RBF kernel implicitly maps data to an **infinite-dimensional space**
+but still computes similarities efficiently!
 
-```{r rbf-kernel-demo}
+``` r
 # Extract support vectors
 sv_info_rbf <- alphaindex(svm_rbf_model)
 sv_indices_rbf <- as.vector(sv_info_rbf[[1]])
 support_vectors_rbf <- poly_train %>% slice(sv_indices_rbf)
 
 cat("Number of support vectors:", length(sv_indices_rbf), "\n")
+```
+
+    ## Number of support vectors: 59
+
+``` r
 cat("Percentage of training data:", 
     round(100 * length(sv_indices_rbf) / nrow(poly_train), 1), "%\n")
+```
 
+    ## Percentage of training data: 39.6 %
+
+``` r
 # Visualize support vectors
 ggplot() +
   geom_point(data = poly_train, 
@@ -549,9 +754,11 @@ ggplot() +
   coord_fixed()
 ```
 
+![](09-svm_files/figure-gfm/rbf-kernel-demo-1.png)<!-- -->
+
 ## Compare Polynomial vs RBF on Polynomial Data
 
-```{r compare-poly-rbf}
+``` r
 # Side-by-side comparison
 library(patchwork)
 
@@ -588,13 +795,15 @@ p_rbf_compare <- ggplot() +
 print(p_poly_compare + p_rbf_compare)
 ```
 
+![](09-svm_files/figure-gfm/compare-poly-rbf-1.png)<!-- -->
+
 # Comparison: What if we used the wrong kernel?
 
 ## Linear SVM on Polynomial Data
 
 ## Linear SVM on Polynomial Data
 
-```{r wrong-kernel}
+``` r
 # Fit linear SVM to polynomial data
 svm_linear_on_poly <- svm_linear_wf %>%
   fit(data = poly_train)
@@ -622,7 +831,11 @@ p_wrong <- ggplot() +
   coord_fixed()
 
 print(p_wrong)
+```
 
+![](09-svm_files/figure-gfm/wrong-kernel-1.png)<!-- -->
+
+``` r
 # Test performance
 poly_test_wrong <- poly_test %>%
   bind_cols(predict(svm_linear_on_poly, new_data = poly_test)) %>%
@@ -636,9 +849,17 @@ wrong_metrics <- poly_test_wrong %>%
 print(wrong_metrics)
 ```
 
+    ## # A tibble: 4 × 2
+    ##   .metric     .estimate
+    ##   <chr>           <dbl>
+    ## 1 accuracy        0.725
+    ## 2 kap             0.446
+    ## 3 mn_log_loss     0.519
+    ## 4 roc_auc         0.818
+
 # Summary Comparison
 
-```{r summary}
+``` r
 # Combine all metrics
 all_metrics <- bind_rows(
   linear_metrics %>% mutate(model = "Linear SVM on Linear Data"),
@@ -652,58 +873,112 @@ all_metrics <- bind_rows(
 print(all_metrics)
 ```
 
+    ## # A tibble: 4 × 5
+    ##   model                             accuracy   kap mn_log_loss roc_auc
+    ##   <chr>                                <dbl> <dbl>       <dbl>   <dbl>
+    ## 1 Linear SVM on Linear Data            0.627 0.129       0.49    0.81 
+    ## 2 Polynomial SVM on Polynomial Data    0.922 0.842       0.165   0.986
+    ## 3 RBF SVM on Polynomial Data           0.941 0.881       0.163   0.988
+    ## 4 Linear SVM on Polynomial Data        0.725 0.446       0.519   0.818
+
 # Key Takeaways
 
-1.  **Linear Kernel**: Works well for linearly separable data. Decision boundary is a hyperplane in the original feature space.
+1.  **Linear Kernel**: Works well for linearly separable data. Decision
+    boundary is a hyperplane in the original feature space.
 
-2.  **Polynomial Kernel**: Can capture curved decision boundaries by implicitly mapping data to higher dimensions. Good when you know the relationship is polynomial.
+2.  **Polynomial Kernel**: Can capture curved decision boundaries by
+    implicitly mapping data to higher dimensions. Good when you know the
+    relationship is polynomial.
 
-3.  **RBF Kernel**: The most flexible kernel, mapping to infinite dimensions. Can capture very complex, localized decision boundaries. Often a good default choice for non-linear problems.
+3.  **RBF Kernel**: The most flexible kernel, mapping to infinite
+    dimensions. Can capture very complex, localized decision boundaries.
+    Often a good default choice for non-linear problems.
 
-4.  **The Kernel Trick**: Instead of explicitly transforming data to higher dimensions (expensive!), we compute similarities directly using kernel functions (efficient!).
+4.  **The Kernel Trick**: Instead of explicitly transforming data to
+    higher dimensions (expensive!), we compute similarities directly
+    using kernel functions (efficient!).
 
-5.  **Choosing the Right Kernel**: Using a linear kernel on non-linear data leads to poor performance. The kernel choice should match the structure of your data.
+5.  **Choosing the Right Kernel**: Using a linear kernel on non-linear
+    data leads to poor performance. The kernel choice should match the
+    structure of your data.
 
-6.  **Support Vectors**: Only a subset of training points (support vectors) determine the decision boundary. The model complexity depends on the number of support vectors, not the dimensionality of the feature space.
+6.  **Support Vectors**: Only a subset of training points (support
+    vectors) determine the decision boundary. The model complexity
+    depends on the number of support vectors, not the dimensionality of
+    the feature space.
 
-7.  **Kernel Comparison**: On the quadratic boundary data, both polynomial (degree 2) and RBF kernels perform well, but they create slightly different boundaries. RBF tends to create more localized, flexible boundaries.
+7.  **Kernel Comparison**: On the quadratic boundary data, both
+    polynomial (degree 2) and RBF kernels perform well, but they create
+    slightly different boundaries. RBF tends to create more localized,
+    flexible boundaries.
 
 ## Application to Open University Data
 
 A new Dataset!
 
-Today we'll be working with a new dataset, the Open University Dataset. The Open University Learning Analytics Dataset (OULAD), donated to the UCI Machine Learning Repository on December 20, 2015, encompasses data from the years 2013 and 2014. This dataset provides a comprehensive view of student interactions within a virtual learning environment (VLE) and is structured into several interconnected tables, each offering distinct insights:
+Today we’ll be working with a new dataset, the Open University Dataset.
+The Open University Learning Analytics Dataset (OULAD), donated to the
+UCI Machine Learning Repository on December 20, 2015, encompasses data
+from the years 2013 and 2014. This dataset provides a comprehensive view
+of student interactions within a virtual learning environment (VLE) and
+is structured into several interconnected tables, each offering distinct
+insights:
 
 Student Information (studentInfo.csv):
 
-Contains demographic details of 32,593 students, including age, gender, region, highest education level, and disability status. Records the final results of students in their respective module presentations. Courses (courses.csv):
+Contains demographic details of 32,593 students, including age, gender,
+region, highest education level, and disability status. Records the
+final results of students in their respective module presentations.
+Courses (courses.csv):
 
-Lists 22 modules along with their presentations, identified by module and presentation codes. Specifies the length of each module presentation in days. Student Registration (studentRegistration.csv):
+Lists 22 modules along with their presentations, identified by module
+and presentation codes. Specifies the length of each module presentation
+in days. Student Registration (studentRegistration.csv):
 
-Details the registration dates of students for specific module presentations. Includes unregistration dates for students who withdrew before completion. Assessments (assessments.csv):
+Details the registration dates of students for specific module
+presentations. Includes unregistration dates for students who withdrew
+before completion. Assessments (assessments.csv):
 
-Provides information on 206 assessments across various modules, including assessment types (e.g., Tutor Marked Assessment, Computer Marked Assessment, Final Exam), cut-off dates, and their respective weights. Student Assessment (studentAssessment.csv):
+Provides information on 206 assessments across various modules,
+including assessment types (e.g., Tutor Marked Assessment, Computer
+Marked Assessment, Final Exam), cut-off dates, and their respective
+weights. Student Assessment (studentAssessment.csv):
 
-Records 173,912 entries of student assessment results, capturing submission dates, scores, and indicators of resubmitted assessments. Virtual Learning Environment (vle.csv):
+Records 173,912 entries of student assessment results, capturing
+submission dates, scores, and indicators of resubmitted assessments.
+Virtual Learning Environment (vle.csv):
 
-Catalogs 6,364 VLE materials, such as HTML pages and PDFs, associated with each module. Details the type of activity and the weeks during which the materials are intended to be used. Student VLE Interaction (studentVle.csv):
+Catalogs 6,364 VLE materials, such as HTML pages and PDFs, associated
+with each module. Details the type of activity and the weeks during
+which the materials are intended to be used. Student VLE Interaction
+(studentVle.csv):
 
-Logs 10,655,280 records of student interactions with VLE materials, noting the number of clicks per material per day.
+Logs 10,655,280 records of student interactions with VLE materials,
+noting the number of clicks per material per day.
 
-I did the data cleaning for this separately (code is in `_oulad.R`). It begins by loading several datasets related to student performance, assessments, registrations, and virtual learning environment (VLE) interactions. The code then aggregates student interactions with VLE materials, grouping them by module, presentation, and activity type to calculate the total number of clicks per student for each class session.
+I did the data cleaning for this separately (code is in `_oulad.R`). It
+begins by loading several datasets related to student performance,
+assessments, registrations, and virtual learning environment (VLE)
+interactions. The code then aggregates student interactions with VLE
+materials, grouping them by module, presentation, and activity type to
+calculate the total number of clicks per student for each class session.
 
-Next, the script merges the student VLE interaction data with student demographic and performance data. It recodes the final results into two categories: "passed" (including "Pass" and "Distinction") and "not passed" (including "Fail" and "Withdrawn"). The dataset is then transformed into a wider format, where different types of VLE activity become separate columns, making it easier for analysis. Finally, missing values represented by "?" are converted to NA, and the cleaned dataset is saved as a CSV file for further use.
+Next, the script merges the student VLE interaction data with student
+demographic and performance data. It recodes the final results into two
+categories: “passed” (including “Pass” and “Distinction”) and “not
+passed” (including “Fail” and “Withdrawn”). The dataset is then
+transformed into a wider format, where different types of VLE activity
+become separate columns, making it easier for analysis. Finally, missing
+values represented by “?” are converted to NA, and the cleaned dataset
+is saved as a CSV file for further use.
 
-```{r load-ou-data}
-
+``` r
 ou<-read_csv("oulad.csv")%>%
   mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%
   select(-final_result,-repeatactivity)
-
 ```
 
-```{r train-test-split}
-
+``` r
 ou_split<-initial_split(ou)
 
 ou_train<-training(ou_split)
@@ -713,25 +988,43 @@ ou_test<-testing(ou_split)
 
 ## Baselines!
 
-As always we should take a quick look at the data to examine the baseline rate.
+As always we should take a quick look at the data to examine the
+baseline rate.
 
-```{r baselines}
+``` r
 ou_train%>%
   group_by(result)%>%
   summarize(proportion = n() / nrow(ou_train)) %>%
   ungroup()
-
 ```
 
-So, the baseline to beat will be about 53 percent, as 53 percent of students did not pass their course.
+    ## # A tibble: 2 × 2
+    ##   result     proportion
+    ##   <fct>           <dbl>
+    ## 1 passed          0.472
+    ## 2 not_passed      0.528
 
-Let's take a quick look at this by a couple of covariates, include the "module" which is the overall course and the "presentation" which is a specific class offering.
+So, the baseline to beat will be about 53 percent, as 53 percent of
+students did not pass their course.
 
-```{r conditional-means}
+Let’s take a quick look at this by a couple of covariates, include the
+“module” which is the overall course and the “presentation” which is a
+specific class offering.
 
+``` r
 ou_train%>%
   group_by(result)%>%
   count()
+```
+
+    ## # A tibble: 2 × 2
+    ## # Groups:   result [2]
+    ##   result         n
+    ##   <fct>      <int>
+    ## 1 passed     11528
+    ## 2 not_passed 12916
+
+``` r
  ou_train %>%
   group_by(code_module,code_presentation) %>%
   summarize(
@@ -743,15 +1036,31 @@ ou_train%>%
   arrange(-proportion_passed)
 ```
 
+    ## # A tibble: 22 × 5
+    ##    code_module code_presentation total passed proportion_passed
+    ##    <chr>       <chr>             <int>  <int>             <dbl>
+    ##  1 AAA         2013J               284    204             0.718
+    ##  2 AAA         2014J               286    198             0.692
+    ##  3 GGG         2013J               709    448             0.632
+    ##  4 GGG         2014J               577    348             0.603
+    ##  5 EEE         2014J               884    515             0.583
+    ##  6 EEE         2013J               794    462             0.582
+    ##  7 GGG         2014B               637    370             0.581
+    ##  8 BBB         2014J              1716    884             0.515
+    ##  9 EEE         2014B               503    252             0.501
+    ## 10 BBB         2013J              1700    828             0.487
+    ## # ℹ 12 more rows
+
 ## Recipe
 
-With those prelimiaries out of the way, let's specify our recipe as usual.
+With those prelimiaries out of the way, let’s specify our recipe as
+usual.
 
-```{r formula}
+``` r
 rf_formula<-as.formula("result~.")
 ```
 
-```{r recipe}
+``` r
 ou_rec<-recipe(rf_formula,ou_train)%>%
   update_role(id_student,new_role="id")%>%
   update_role(result,new_role = "outcome")%>%
@@ -763,11 +1072,13 @@ ou_rec<-recipe(rf_formula,ou_train)%>%
   step_impute_mean(all_predictors())
 ```
 
-Note as always that we must standardize all predictors. There's quite a bit of missing data in this dataset so I'm using impute_mean to preserve existing data in the rows.
+Note as always that we must standardize all predictors. There’s quite a
+bit of missing data in this dataset so I’m using impute_mean to preserve
+existing data in the rows.
 
 ## Model Specification
 
-```{r svm-model}
+``` r
 svm_model<-svm_rbf(
   mode="classification",
   cost=tune(),
@@ -775,23 +1086,29 @@ svm_model<-svm_rbf(
   set_engine("kernlab")
 ```
 
-[kernlab](https://cran.r-project.org/web/packages/kernlab/index.html) is one of the go-to engines for svms. It's a library that includes a large number of kernel-based modeling approaches. 
+[kernlab](https://cran.r-project.org/web/packages/kernlab/index.html) is
+one of the go-to engines for svms. It’s a library that includes a large
+number of kernel-based modeling approaches.
 
+We’ve got 24,000 units in our testing data, which makes this just big
+enough for k-fold cross validation.
 
-We've got 24,000 units in our testing data, which makes this just big enough for k-fold cross validation. 
-```{r -resamp}
+``` r
 ou_rs <-vfold_cv(ou_train, v=20)
 ```
 
 ## Tuning Grid
 
-We'll use a latin-square style design this time, which is designed to cover a broader number of possible combinations. 
-```{r}
+We’ll use a latin-square style design this time, which is designed to
+cover a broader number of possible combinations.
+
+``` r
 ou_grid<-grid_space_filling(extract_parameter_set_dials(svm_model),size=4)
 ```
 
 ## Workflow
-```{r}
+
+``` r
 ou_wf <- workflow() %>%
   add_model(svm_model) %>%
   add_recipe(ou_rec)
@@ -799,7 +1116,7 @@ ou_wf <- workflow() %>%
 
 ## Hyper Parameter Tuning via Cross Validation
 
-```{r}
+``` r
 fit_svm=FALSE
 
 if(fit_svm){
@@ -819,32 +1136,39 @@ save(ou_tune_results,file="ou_tune_results.Rdata")
 
 ## Plotting Tuning Results
 
-```{r}
+``` r
 autoplot(ou_tune_results)
 ```
 
+![](09-svm_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
 ## Selecting Best Parameters
-```{r}
+
+``` r
 best_params <- select_best(ou_tune_results, metric = "roc_auc")
 best_params
 ```
 
+    ## # A tibble: 1 × 3
+    ##    cost rbf_sigma .config        
+    ##   <dbl>     <dbl> <chr>          
+    ## 1    32  0.000464 pre0_mod4_post0
 
 ## Final Model
-```{r}
+
+``` r
 final_ou_wf <- finalize_workflow(ou_wf, best_params)
 ```
 
-
 ## Fitting Final Model to Training Data
-```{r}
+
+``` r
 final_ou_model <- fit(final_ou_wf, data = ou_train)
 ```
 
-
 ## Evaluating Model Fit on Test Data
-```{r}
+
+``` r
 # Evaluate on test set
 ou_test<-final_ou_model%>%augment(ou_test)
 
@@ -859,25 +1183,40 @@ final_metrics <- ou_test %>%
 final_metrics
 ```
 
-We're able to achieve pretty impressive model fit via SVM, and could likely improve considerably with some more careful selection of hyperparameters. 
+    ## # A tibble: 2 × 3
+    ##   .metric  .estimator .estimate
+    ##   <chr>    <chr>          <dbl>
+    ## 1 roc_auc  binary         0.866
+    ## 2 accuracy binary         0.775
+
+We’re able to achieve pretty impressive model fit via SVM, and could
+likely improve considerably with some more careful selection of
+hyperparameters.
 
 ### **How Similarity is Used to Predict Points in the Testing Dataset**
 
-In **Support Vector Machines (SVMs)**, the **kernel similarity** between a new test point and training points is crucial for making predictions.
+In **Support Vector Machines (SVMs)**, the **kernel similarity** between
+a new test point and training points is crucial for making predictions.
 
 ------------------------------------------------------------------------
 
 ## **1. Prediction in a Linear SVM**
 
-In a **linear kernel**, the decision boundary is a straight line (or hyperplane in higher dimensions), and prediction is based on the **dot product**:
+In a **linear kernel**, the decision boundary is a straight line (or
+hyperplane in higher dimensions), and prediction is based on the **dot
+product**:
 
 $$
 f(x) = \sum_{i \in SV} \alpha_i y_i (x_i \cdot x) + b
 $$
 
-where: - $x$ is the test point, - $x_i$ are the **support vectors** (not all training points, only the critical ones), - $y_i$ are the labels of support vectors (+1 or -1), - $\alpha_i$ are learned coefficients (Lagrange multipliers), - $b$ is the bias term.
+where: - $x$ is the test point, - $x_i$ are the **support vectors** (not
+all training points, only the critical ones), - $y_i$ are the labels of
+support vectors (+1 or -1), - $\alpha_i$ are learned coefficients
+(Lagrange multipliers), - $b$ is the bias term.
 
-**Key Idea**: Prediction is a weighted sum of **similarity** (dot product) between the test point and support vectors.
+**Key Idea**: Prediction is a weighted sum of **similarity** (dot
+product) between the test point and support vectors.
 
 ------------------------------------------------------------------------
 
@@ -889,13 +1228,18 @@ $$
 K(x_i, x_j) = (x_i \cdot x_j + c)^d
 $$
 
-where: - $c$ is a constant (we use **1**), - $d$ is the degree of the polynomial (we use **2** for quadratic separation).
+where: - $c$ is a constant (we use **1**), - $d$ is the degree of the
+polynomial (we use **2** for quadratic separation).
 
 #### **Impact on Prediction:**
 
--   If a test point has **high polynomial similarity** to positive-class support vectors, it is classified as **+1**.
--   If a test point has **higher similarity** to negative-class support vectors, it is classified as **-1**.
--   **Non-linear decision boundaries** emerge because polynomial similarity is not just based on distance but **higher-order relationships**.
+- If a test point has **high polynomial similarity** to positive-class
+  support vectors, it is classified as **+1**.
+- If a test point has **higher similarity** to negative-class support
+  vectors, it is classified as **-1**.
+- **Non-linear decision boundaries** emerge because polynomial
+  similarity is not just based on distance but **higher-order
+  relationships**.
 
 ------------------------------------------------------------------------
 
@@ -907,13 +1251,15 @@ $$
 K(x_i, x_j) = \exp(-\gamma ||x_i - x_j||^2)
 $$
 
-where $\gamma$ controls how **quickly similarity decreases** with distance.
+where $\gamma$ controls how **quickly similarity decreases** with
+distance.
 
 #### **Impact on Prediction:**
 
--   If a test point is **very close** to a particular support vector, the kernel similarity will be **near 1**.
--   If it is **far away**, the kernel similarity **drops towards 0**.
--   A **weighted sum** of these similarities determines classification:
+- If a test point is **very close** to a particular support vector, the
+  kernel similarity will be **near 1**.
+- If it is **far away**, the kernel similarity **drops towards 0**.
+- A **weighted sum** of these similarities determines classification:
 
 $$
 f(x) = \sum_{i \in SV} \alpha_i y_i K(x_i, x) + b
@@ -923,12 +1269,17 @@ $$
 
 ## **4. How Kernel Influence Affects Classification**
 
-To visualize how similarity determines classification in an SVM, let's compute the **weighted similarity scores** for a test point using R:
+To visualize how similarity determines classification in an SVM, let’s
+compute the **weighted similarity scores** for a test point using R:
 
 #### **Expected Observations**
 
--   **Linear**: Influence increases linearly with $x_1$.
--   **Polynomial**: Influence rises sharply for large $x_1$, showing **non-linear growth**.
--   **RBF**: Influence **peaks near close points** and drops off exponentially.
+- **Linear**: Influence increases linearly with $x_1$.
+- **Polynomial**: Influence rises sharply for large $x_1$, showing
+  **non-linear growth**.
+- **RBF**: Influence **peaks near close points** and drops off
+  exponentially.
 
-This explains **why RBF SVMs perform well on non-linearly separable data** they assign influence locally, avoiding the need for a complex decision boundary in original space.
+This explains **why RBF SVMs perform well on non-linearly separable
+data** they assign influence locally, avoiding the need for a complex
+decision boundary in original space.
