@@ -1,7 +1,7 @@
 ---
 title: "Assignment 3"
 author: "Will Doyle"
-date: "2025-01-31"
+date: "2026-02-12"
 output: github_document
 editor_options: 
   markdown: 
@@ -41,7 +41,8 @@ Preprocess the data using a recipe-based workflow, ensuring:
 ### 4. Model Tuning via Monte Carlo Cross-Validation
 
 Perform Monte Carlo cross-validation (e.g., 25 repetitions).
-Tune both penalty (λ) and mixture (α) parameters to optimize the model.
+Tune both penalty (λ) and mixture (α) parameters to optimize the model. Utilize one of the two
+tuning processes that we discussed-- simulated annealing or Bayesian optimization. 
 Select the best hyperparameters based on ROC AUC. Visualize how accuracy, sensitivity, specificity, and AUC vary across regularization values.
 
 ### 5. Final Model Fitting
