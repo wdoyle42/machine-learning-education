@@ -1,48 +1,97 @@
 ---
-title: "Assignment 4"
+title: "Assignment 9"
 author: "Will Doyle"
-date: "2025-02-06"
-output: html_document
+date: "2026-02-17"
+output: github_document
+editor_options: 
+  markdown: 
+    wrap: sentence
 ---
 
-Assignment 4: feature engineering and multinomial outcomes. 
+## Assignment 4: Predicting Passed With Distinction vs. Passed Using SVM
 
-## Part 1: Feature Engineering
+In this assignment, you will model the probability that a student who *passed* a course earned a **Pass with Distinction** versus a **Pass** using a support vector machine.
 
-**Instructions:**  
-Using the hsls dataset complete the following tasks:
 
-1. **Data Cleaning & Preparation**  
-   - Change the sector variable to have three types: for-profit, not-for-profit, and public
-   - Identify and handle missing values.
+### 1. Data preparation
 
-2. **Feature Creation**  
-   - Create interaction terms between at least two variables.
-   - Engineer at least two new features that could improve model performance.
+Load the dataset (`oulad2.csv`) and create the analysis sample.
 
-4. **Feature Selection**  
-   - Use correlation analysis to remove redundant features.
-   - Use our standard set of steps to structure and prep the data for analysis using 
-   regularization.
- 
-## Part 2: Elastic Net for Multinomial Outcomes
+1. Read in the data.
 
-**Instructions:**  
-Using the three part outcome above from hsls:
 
-1. **Model Setup**  
-   - Split the data into training and testing sets.
-   - Define a multinomial logistic regression model with an elastic net penalty.
+2. Make sure that result factor with the positive class set to `Distinction`.
 
-2. **Hyperparameter Tuning**  
-   - Use cross-validation to tune the **alpha** (mixture) and **lambda**  (penalty) parameters.
-   - Identify the optimal values for these hyperparameters.
+4. Create an initial training/testing split.
+   Use `strata = outcome` to preserve the class balance.
 
-3. **Model Evaluation**  
-   - Report accuracy, and roc-auc
- 
-4. **Comparing Models**  
-   - Compare the elastic net multinomial model to a baseline model (proportions only)
-   - Discuss the advantages and disadvantages of using elastic net regularization.
+Your code in this section should clearly show the filtering step (dropping non-pass outcomes) and the construction of the new binary outcome.
+
+### 2. Exploratory data analysis
+
+Report and briefly interpret:
+
+1. The baseline rate of `result` in the training data.
+2. At least one descriptive comparison showing how the distinction rate differs across course context.
+
+
+Include at least one visualization.
+
+### 3. Preprocessing with a recipe
+
+Create a recipe that:
+
+- Sets the student identifier as an `id` role (do not use it as a predictor).
+- Converts nominal predictors to dummy variables.
+- Handles unseen levels using `step_unknown()`.
+- Collapses rare categories using `step_other()` (use a reasonable threshold, e.g., 0.05).
+- Removes near-zero variance predictors.
+- Normalizes numeric predictors.
+- Imputes missing values using a linear model.
+
+### 4. Model specification: RBF SVM
+
+Specify an RBF-kernel SVM using `kernlab` and set both hyperparameters for tuning:
+
+- `cost`
+- `rbf_sigma`
+
+Use a tidymodels workflow that combines your recipe and model.
+
+### 5. Resampling and hyperparameter tuning
+
+1. Create v-fold cross-validation resamples on the training data (e.g., `v = 10` or `v = 20`).
+2. Create a tuning grid using a **size-10 space-filling (Latin hypercube) design**:
+
+- Use `extract_parameter_set_dials()` on your SVM model specification.
+- Use `grid_space_filling(..., size = 10)`.
+
+3. Tune with `tune_grid()` and evaluate at least:
+
+- `roc_auc`
+- `accuracy`
+
+Select the best hyperparameters based on ROC AUC.
+Include a plot (or table) that shows performance across the grid.
+
+### 6. Final fit and evaluation on the test set
+
+1. Finalize the workflow with the best hyperparameters.
+2. Fit the finalized workflow and evaluate it on the test set using `last_fit()` (preferred) or an equivalent approach.
+3. Report:
+
+- ROC AUC
+- Accuracy
+- A confusion matrix
+
+Interpret each metric in one or two sentences in the context of predicting who earns `Distinction` among students who passed.
+
+### 7. Short write-up
+
+In a short paragraph or two, answer the following:
+
+1. What do `cost` and `rbf_sigma` do in an RBF SVM, conceptually?
+2. Based on your tuning results, what combination of values worked best here, and why do you think that is?
+
 
 

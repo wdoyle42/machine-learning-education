@@ -20,40 +20,6 @@ library(rpart)
 library(rpart.plot)
 ```
 
-A new Dataset!
-
-Today we'll be working with a new dataset, the Open University Dataset. The Open University Learning Analytics Dataset (OULAD), donated to the UCI Machine Learning Repository on December 20, 2015, encompasses data from the years 2013 and 2014. This dataset provides a comprehensive view of student interactions within a virtual learning environment (VLE) and is structured into several interconnected tables, each offering distinct insights:
-
-Student Information (studentInfo.csv):
-
-Contains demographic details of 32,593 students, including age, gender, region, highest education level, and disability status.
-Records the final results of students in their respective module presentations.
-Courses (courses.csv):
-
-Lists 22 modules along with their presentations, identified by module and presentation codes.
-Specifies the length of each module presentation in days.
-Student Registration (studentRegistration.csv):
-
-Details the registration dates of students for specific module presentations.
-Includes unregistration dates for students who withdrew before completion.
-Assessments (assessments.csv):
-
-Provides information on 206 assessments across various modules, including assessment types (e.g., Tutor Marked Assessment, Computer Marked Assessment, Final Exam), cut-off dates, and their respective weights.
-Student Assessment (studentAssessment.csv):
-
-Records 173,912 entries of student assessment results, capturing submission dates, scores, and indicators of resubmitted assessments.
-Virtual Learning Environment (vle.csv):
-
-Catalogs 6,364 VLE materials, such as HTML pages and PDFs, associated with each module.
-Details the type of activity and the weeks during which the materials are intended to be used.
-Student VLE Interaction (studentVle.csv):
-
-Logs 10,655,280 records of student interactions with VLE materials, noting the number of clicks per material per day.
-
-I did the data cleaning for this separately (code is in `_oulad.R`).  It begins by loading several datasets related to student performance, assessments, registrations, and virtual learning environment (VLE) interactions. The code then aggregates student interactions with VLE materials, grouping them by module, presentation, and activity type to calculate the total number of clicks per student for each class session.
-
-Next, the script merges the student VLE interaction data with student demographic and performance data. It recodes the final results into two categories: "passed" (including "Pass" and "Distinction") and "not passed" (including "Fail" and "Withdrawn"). The dataset is then transformed into a wider format, where different types of VLE activity become separate columns, making it easier for analysis. Finally, missing values represented by "?" are converted to NA, and the cleaned dataset is saved as a CSV file for further use.
-
 ```{r}
 ou<-read_csv("oulad.csv")%>%
   mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%

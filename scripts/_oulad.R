@@ -31,21 +31,23 @@ si<-si%>%left_join(stvle)
 
 ## Recode outcome
 
-ou<-si%>%mutate(result=fct_collapse(as_factor(final_result),
+ou1<-si%>%mutate(result=fct_collapse(as_factor(final_result),
                              passed=c("Pass","Distinction"),
                              not_passed=c("Fail","Withdrawn")))
 
 ## One variable per sum clicks per activity
-ou<-ou%>%pivot_wider(names_from=activity_type,values_from = clicks)
+ou1<-ou1%>%pivot_wider(names_from=activity_type,values_from = clicks)
 
 ## Messed up level shhhhhh
-ou<-ou%>%select(-("NA"))
+ou1<-ou1%>%select(-("NA"))
 
 ## q marks=NA
-ou<-ou%>%
+ou1<-ou1%>%
   mutate(across(where(is.character), ~na_if(., "?")))
 
-write_csv(ou,file="oulad.csv")
+write_csv(ou1,file="oulad.csv")
+
+
 
 
 ## Second Version, all pased, with distinction or not
