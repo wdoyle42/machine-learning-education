@@ -26,6 +26,19 @@ ou<-read_csv("oulad.csv")%>%
   select(-final_result)
 ```
 
+
+We'll start off by using a very limited version of the dataset. 
+
+```{r}
+ou<-ou%>%select(result,
+         num_of_prev_attempts,
+         studied_credits,
+         highest_education)
+```
+
+
+
+
 ```{r}
 ou_split<-initial_split(ou)
 
@@ -35,53 +48,16 @@ ou_test<-testing(ou_split)
 ```
 
 
-
-```{r}
-
-ou_train%>%
-  group_by(result)%>%
-  count()
- ou_train %>%
-  group_by(code_module,code_presentation) %>%
-  summarize(
-    total = n(),  # Total number in each class group
-    passed = sum(result == "passed", na.rm = TRUE),
-    proportion_passed = passed / total
-  ) %>%
-  ungroup()%>%
-  arrange(-proportion_passed)
-```
-
-```{r}
-cc<-.0001
-td<-10
-n_min<-10
-
-tree_spec<-decision_tree(
-  cost_complexity =cc , # alpha, 0= keep everything, 1=drop everything
-  tree_depth = td, # How many splits before coming to a decision
-  min_n=n_min)%>% # minimum n for each node
-  set_engine("rpart")%>%
-  set_mode("classification")
-```
+Let's specify a vary basic classification tree. We'll have a low cost complexity, a tree depth of 10, and a minimum node size of 10 units. 
 
 
-```{r}
-ou_limited<-ou_train%>%
-  select(result,
-         num_of_prev_attempts,
-         studied_credits)
-#,
-#        age_band,
-#       gender,
-#        highest_education)
-```
 
 ```{r}
 tree_formula<-as.formula("result~.")
 ```
 
 
+In the recipe, notice that I'm not standardizing. Not needed for trees!
 ```{r}
 tree_rec<-recipe(tree_formula,ou_limited)%>%
   update_role(result,new_role = "outcome")%>%
@@ -118,7 +94,9 @@ rpart.plot(tree_fit$fit)
  
 # Plot tree before pruning
 rpart.plot(tree_fit$fit, main = "Initial Tree")
+```
 
+```{r}
 # Display cost complexity table
 printcp(tree_fit$fit)
 
@@ -127,12 +105,13 @@ optimal_cp <- tree_fit$fit$cptable[which.min(tree_fit$fit$cptable[, "xerror"]), 
 pruned_tree <- prune(tree_fit$fit, cp = optimal_cp)
 
 # Plot pruned tree
-rpart.plot(pruned_tree, main = "Pruned Tree") 
+rpart.plot(pruned_tree, main = "Pruned Tree",roundint=FALSE) 
 ```
 
 
+# Tuning a Classification Tree
 
-
+Of course, like with everything else you just 
 ```{r}
 tree_spec<-decision_tree(
   cost_complexity = tune(), # alpha, 0= keep everything, 1=drop everything
@@ -159,12 +138,28 @@ What it does: Sets the minimum number of data points required in a node for a sp
 Higher values: Prevent splitting when there aren’t enough observations, leading to simpler trees.
 Lower values: Allow smaller groups to be split, creating more complex trees.
 
+
+
+
 ```{r}
 tree_grid<-grid_regular(cost_complexity(),
                         tree_depth(),
                         min_n(),
                         levels=4)
 ```
+
+```{r}
+ou<-read_csv("oulad.csv")%>%
+  mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%
+  select(-final_result)
+```
+
+```{r}
+ou_split<-initial_split(ou)
+ou_train<-training(ou_split)
+ou_test<-testing(ou_split)
+```
+
 
 
 ```{r}
@@ -179,10 +174,6 @@ tree_rec<-recipe(tree_formula,ou_train)%>%
   step_other(all_nominal_predictors(),threshold = .1)%>%
   step_unknown(all_nominal_predictors())%>%
   step_dummy(all_nominal_predictors())
-```
-
-```{r}
-tree_rec%>%prep%>%bake(ou_train)
 ```
 
 ```{r}
@@ -258,8 +249,24 @@ final_fit <- final_wf%>%fit(ou_train)
 final_fit_result<- final_fit%>% 
   extract_fit_parsnip()
 
-rpart.plot(final_fit_result$fit)
+## Tee hee
+rpart.plot(final_fit_result$fit) 
 
 ```
 
+```{r}
+ou_test<-final_fit%>%augment(ou_test)
 
+# Compute final accuracy and ROC AUC
+final_metrics <- ou_test %>%
+  roc_auc(truth = result,.pred_passed) %>%
+  bind_rows(
+    ou_test %>% accuracy(truth = result, estimate = .pred_class)
+  )
+
+# Output results
+final_metrics
+
+```
+
+As we'll discuss next time, trees can be *very* prone to overfitting, so it's worth exploring a variety of ways to avoid this. 
