@@ -167,18 +167,15 @@ final_res <- final_wf %>%
 final_res %>%
   collect_metrics()
 
-ou_rec%>%
-  prep()%>%
-  bake(ou_train)%>%dim()
-
-ou_train%>%
-  group_by(result)%>%
-  count()
 ```
 
 ## Variable Importance
 
 Variable importance measures how much each predictor contributes to the model's accuracy. For random forests using the `ranger` engine, we can extract permutation-based importance by refitting the final workflow with `importance = "permutation"` specified in the engine. This measures the decrease in model accuracy when each variable's values are randomly shuffled — larger drops indicate more important variables.
+
+Variable importance in random forests is most commonly assessed via **permutation importance**, introduced by Breiman (2001). For a given tree $t$ in the forest, let $\hat{y}_i^{(t)}$ denote the predicted class for observation $i$ using the out-of-bag (OOB) sample. For each predictor $X_j$, the values of that variable are randomly permuted across the OOB observations, breaking any association between $X_j$ and the outcome $Y$. The model then generates a new set of predictions $\hat{y}_{i,\pi_j}^{(t)}$ using the permuted variable. The importance of $X_j$ for tree $t$ is the drop in predictive accuracy — typically measured by accuracy or the Gini index — between the original and permuted predictions. Averaging this quantity across all $T$ trees gives the overall permutation importance: $\text{VI}(X_j) = \frac{1}{T} \sum_{t=1}^{T} \left[ \text{Accuracy}^{(t)} - \text{Accuracy}_{\pi_j}^{(t)} \right]$. Variables with large values of $\text{VI}(X_j)$ are those whose signal, when destroyed, meaningfully degrades model performance — making them the most consequential predictors.
+
+In our implementation we use `importance = "permutation"` in the `ranger` engine rather than the alternative impurity-based importance. Impurity importance sums the reduction in node impurity (e.g., the Gini index) attributable to splits on $X_j$ across all trees: $\text{VI}_{\text{imp}}(X_j) = \frac{1}{T} \sum_{t=1}^{T} \sum_{s \in \mathcal{S}_j^{(t)}} \Delta I(s)$, where $\mathcal{S}_j^{(t)}$ is the set of splits on variable $X_j$ in tree $t$ and $\Delta I(s)$ is the impurity reduction at split $s$. While computationally convenient, impurity importance is known to be biased toward variables with many unique values or high cardinality — a continuous variable or a dummy-expanded nominal predictor with many levels will tend to receive inflated importance scores simply because it offers more candidate split points. Permutation importance does not share this bias, making it the more reliable choice when predictors vary in their measurement scale or number of categories, as they do here.
 
 ```{r}
 final_rf_imp <- final_rf %>%
