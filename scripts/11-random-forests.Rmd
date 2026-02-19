@@ -10,6 +10,7 @@ library(tidyverse)
 library(tidymodels)
 library(finetune)
 library(janitor)
+library(vip)
 ```
 
 
@@ -173,4 +174,55 @@ ou_rec%>%
 ou_train%>%
   group_by(result)%>%
   count()
+```
+
+## Variable Importance
+
+Variable importance measures how much each predictor contributes to the model's accuracy. For random forests using the `ranger` engine, we can extract permutation-based importance by refitting the final workflow with `importance = "permutation"` specified in the engine. This measures the decrease in model accuracy when each variable's values are randomly shuffled — larger drops indicate more important variables.
+
+```{r}
+final_rf_imp <- final_rf %>%
+  set_engine("ranger", importance = "permutation")
+
+final_wf_imp <- workflow() %>%
+  add_recipe(ou_rec) %>%
+  add_model(final_rf_imp)
+
+imp_fit <- final_wf_imp %>%
+  fit(data = ou_train)
+```
+
+### Variable Importance Table
+
+```{r}
+vi_tbl <- imp_fit %>%
+  extract_fit_parsnip() %>%
+  vip::vi() %>%
+  arrange(desc(Importance)) %>%
+  mutate(Importance = round(Importance, 4))
+
+vi_tbl %>%
+  knitr::kable(
+    col.names = c("Variable", "Importance"),
+    caption   = "Permutation-based variable importance from the final random forest model."
+  )
+```
+
+### Variable Importance Plot
+
+The plot below shows the top 20 most important variables. Longer bars indicate greater importance — i.e., shuffling that variable's values leads to a larger drop in predictive accuracy.
+
+```{r fig.height=6, fig.width=8}
+vi_tbl %>%
+  slice_max(Importance, n = 20) %>%
+  mutate(Variable = fct_reorder(Variable, Importance)) %>%
+  ggplot(aes(x = Importance, y = Variable)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Top 20 Variables by Permutation Importance",
+    subtitle = "Final random forest model fit on training data",
+    x     = "Permutation Importance",
+    y     = NULL
+  ) +
+  theme_minimal()
 ```

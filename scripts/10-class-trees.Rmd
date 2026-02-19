@@ -37,8 +37,6 @@ ou<-ou%>%select(result,
 ```
 
 
-
-
 ```{r}
 ou_split<-initial_split(ou)
 
@@ -47,9 +45,7 @@ ou_train<-training(ou_split)
 ou_test<-testing(ou_split)
 ```
 
-
 Let's specify a vary basic classification tree. We'll have a low cost complexity, a tree depth of 10, and a minimum node size of 10 units. 
-
 
 
 ```{r}
@@ -59,10 +55,11 @@ tree_formula<-as.formula("result~.")
 
 In the recipe, notice that I'm not standardizing. Not needed for trees!
 ```{r}
-tree_rec<-recipe(tree_formula,ou_limited)%>%
+tree_rec<-recipe(tree_formula,ou)%>%
   update_role(result,new_role = "outcome")%>%
   step_other(all_nominal_predictors(),threshold = .1)%>%
   step_unknown(all_nominal_predictors())%>%
+  step_impute_linear(all_numeric_predictors())%>%
   step_dummy(all_nominal_predictors())
 ```
 
@@ -71,8 +68,7 @@ We'll start off by creating a simple tree model and fitting it so we can visuali
 ```{r}
 
 cc<-.001
-n_min=10
-n_trees=10
+
 
 small_tree <- decision_tree(
   cost_complexity=cc,
@@ -85,15 +81,23 @@ small_tree <- decision_tree(
  tree_wf <- workflow() %>%
    add_recipe(tree_rec) %>%
    add_model(small_tree) %>%
-   fit(ou_limited) #results are found here 
-
+   fit(ou_train) #results are found here 
  tree_fit <- tree_wf %>% 
   extract_fit_parsnip()
  
 rpart.plot(tree_fit$fit)
  
 # Plot tree before pruning
-rpart.plot(tree_fit$fit, main = "Initial Tree")
+rpart.plot(tree_fit$fit, 
+  type = 1,          # show class probabilities at nodes
+  extra = 7,        
+  under = TRUE,      # put extra info under the box (cleaner)
+  faclen = 0,        # don't abbreviate factor level names
+  varlen = 0,        # don't abbreviate variable names
+  roundint = FALSE,  # don't round split points to integers
+  digits = 2         # fewer decimals
+)
+
 ```
 
 ```{r}
@@ -250,7 +254,7 @@ final_fit_result<- final_fit%>%
   extract_fit_parsnip()
 
 ## Tee hee
-rpart.plot(final_fit_result$fit) 
+rpart.plot(final_fit_result$fit,roundint = FALSE) 
 
 ```
 

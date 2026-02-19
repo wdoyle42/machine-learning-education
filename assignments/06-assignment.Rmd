@@ -1,8 +1,8 @@
 ---
 title: "06-Assignment"
 author: "Will Doyle"
-date: "2025-02-20"
+date: "2026-02-19"
 output: github_document
 ---
 
-This one's pretty simple, at least to describe. Building on assignment 5, run a model using xgboost and compare the predictive accuracy of xgboost to both classification trees and random forests. Use AUC as your measure of predictive accuracy. In two or three sentences describe why you think there's a difference in predictive between the different approaches. 
+This one's pretty simple, at least to describe. Building on assignment 5, run a model using xgboost and compare the predictive accuracy of xgboost to both classification trees and random forests. Use AUC as your measure of predictive accuracy. In two or three sentences describe why you think there's a difference in predictive accuracy between the different approaches. 
