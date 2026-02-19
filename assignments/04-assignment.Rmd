@@ -15,10 +15,9 @@ In this assignment, you will model the probability that a student who *passed* a
 
 ### 1. Data preparation
 
-Load the dataset (`oulad2.csv`) and create the analysis sample.
+Load the dataset (`oulad2.csv`).
 
 1. Read in the data.
-
 
 2. Make sure that result factor with the positive class set to `Distinction`.
 
@@ -47,7 +46,7 @@ Create a recipe that:
 - Collapses rare categories using `step_other()` (use a reasonable threshold, e.g., 0.05).
 - Removes near-zero variance predictors.
 - Normalizes numeric predictors.
-- Imputes missing values using a linear model.
+- Imputes missing values using the approach of your choice. 
 
 ### 4. Model specification: RBF SVM
 
