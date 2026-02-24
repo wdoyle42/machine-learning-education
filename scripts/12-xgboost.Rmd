@@ -1,72 +1,11 @@
 ---
-title: "Xgboost"
+title: "From Gradient Boosting to XGBoost"
 author: "Will Doyle"
 date: "2025-02-18"
 output: github_document
 ---
 
-# Extreme Gradient Boosting (XGBoost) and Tree-Based Ensembles
-
-XGBoost (Extreme Gradient Boosting) builds upon traditional gradient boosting by making the process faster, more efficient, and better at generalizing to new data. It introduces several innovations designed to overcome the weaknesses of standard gradient boosting:
-
-Second-Order Optimization: Instead of just using the gradient of the loss function (which tells how much to adjust predictions), XGBoost also incorporates the second derivative (Hessian) to improve learning efficiency. This allows it to make better-informed adjustments at each step.
-
-Feature Subsampling: Inspired by random forests, XGBoost randomly selects a subset of features at each split in a tree, reducing correlation between individual trees and improving overall model generalization.
-
-Efficient Tree Construction: Traditional gradient boosting builds trees sequentially, evaluating many possible splits, which can be slow. XGBoost optimizes this process by using a technique called weighted quantile sketching, allowing it to handle very large datasets efficiently.
-
-Handling Missing Data: Unlike many other models that require explicit imputation, XGBoost can learn the best direction to go when encountering missing values, improving robustness.
-
-Together, these enhancements make XGBoost one of the most powerful machine learning techniques, widely used in applications ranging from finance to healthcare to competitive data science challenges. By combining gradient boosting’s sequential refinement of predictions with efficient, regularized tree-building techniques, XGBoost delivers high accuracy while maintaining computational efficiency.
-
-### Weighted Quantile Sketching in XGBoost
-
-**Understanding the Challenge:**
-In traditional decision tree algorithms, finding the best split for a feature requires sorting all data points to identify threshold values. This process can be computationally expensive, especially for large datasets with continuous features. XGBoost addresses this challenge by using a method called **weighted quantile sketching**.
-
-**What is Quantile Sketching?**
-Quantile sketching is a technique used to approximate the distribution of data efficiently. Instead of sorting the entire dataset (which can be slow and memory-intensive), the algorithm estimates key quantiles—like medians or percentiles—that represent the data's distribution. This approximation is particularly useful for finding the best split points in decision trees.
-
-**The “Weighted” Aspect:**
-In XGBoost, data points can have different importance or weights, especially when correcting errors in boosting iterations. Weighted quantile sketching takes these weights into account, ensuring that the approximation reflects the actual influence of each data point. For example, data points with higher weights (often those with higher errors) will have more impact on determining the quantiles.
-
-**How It Works in XGBoost:**
-1. **Summarizing Data:** The algorithm summarizes feature values into a compact set of representative quantiles. This summary captures the distribution without needing to sort all data points.
-
-2. **Approximate Splitting:** Instead of evaluating every possible threshold, XGBoost uses these quantiles to approximate the best splits quickly. This allows it to efficiently handle large datasets and high-cardinality features.
-
-3. **Precision Control:** XGBoost ensures that the approximation is within a controllable error bound. This means it balances speed with accuracy, providing high-quality splits without excessive computational cost.
-
-**Benefits of Weighted Quantile Sketching:**
-- **Scalability:** It enables XGBoost to handle massive datasets with millions of data points and features.
-- **Efficiency:** Reduces the time complexity of finding optimal splits, especially for continuous variables.
-- **Robustness:** Accurately reflects the distribution of data, even when some points have higher significance due to their errors.
-
-**Practical Impact:**
-This innovation is one of the reasons why XGBoost is so fast and reliable in real-world applications. It combines the power of gradient boosting with clever statistical approximations to deliver state-of-the-art performance without compromising computational efficiency.
-
-### **Stochastic Gradient Boosting**  
-
-Stochastic Gradient Boosting (SGB) is a variation of traditional gradient boosting that introduces **randomness** to improve generalization and efficiency. Instead of using the full dataset for every boosting iteration, SGB **randomly samples a subset of the training data** at each step. This controlled randomness helps prevent overfitting and makes the model more robust to noise.
-
-#### **How It Works**
-1. **Sequential Learning:** Like standard gradient boosting, SGB builds models iteratively, with each new tree focusing on correcting the errors of the previous ones.
-2. **Row Subsampling:** Instead of training each tree on the entire dataset, SGB **randomly selects a fraction of the available data** (e.g., 70%) at each iteration. This means different trees see slightly different views of the data.
-3. **Feature Subsampling (Optional):** Some implementations, including XGBoost, also allow **feature subsampling**, where a random subset of features is chosen for each tree or each split.
-4. **Gradient-Based Updates:** The algorithm still follows gradient descent principles, updating the model based on residual errors, but each update is based on a **randomized subset of the data**, making it more resistant to overfitting.
-
-#### **Key Benefits of Stochastic Gradient Boosting**
-- **Prevents Overfitting:** By training on random subsets of data, SGB reduces the model’s tendency to memorize specific data points.
-- **Speeds Up Training:** Since each tree only trains on a portion of the data, computation is faster.
-- **Increases Model Diversity:** The randomness makes individual trees more different from each other, leading to better generalization.
-
-#### **Stochastic Gradient Boosting vs. Standard Gradient Boosting**
-- **Standard Gradient Boosting:** Uses all available data at each boosting step, making it more prone to overfitting.
-- **Stochastic Gradient Boosting:** Introduces randomness by sampling data, improving generalization and efficiency.
-
-This approach is particularly effective in **large datasets** and **high-variance settings**, making it a core component of algorithms like **XGBoost**, which further optimizes it with additional enhancements like regularization and second-order gradient approximations.
-
-```{r}
+```{r setup, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(tidymodels)
 library(janitor)
@@ -74,385 +13,475 @@ library(xgboost)
 library(vip)
 library(rpart)
 library(rpart.plot)
+library(gganimate)
+library(gifski)
 ```
 
-```{r}
-ou<-read_csv("oulad.csv")%>%
-  mutate(result=fct_relevel(as_factor(result),c("passed","not_passed")))%>%
+---
+
+# Part 1: From Random Forests to Gradient Boosting
+
+You already know random forests: build many independent trees on bootstrapped samples and aggregate their predictions. Each tree is ignorant of the others. Gradient boosting takes a different philosophy — **trees are built sequentially, each one explicitly correcting the mistakes of the ensemble so far**.
+
+The key insight is this: if we know where our current predictions are wrong (the residuals), we can train the *next* tree to predict those residuals. Adding that tree's predictions to our running total moves us closer to the truth. Repeat this process many times and the ensemble gradually "descends" toward the best possible predictions — hence **gradient descent**.
+
+## Gradient Descent via Residuals: The Core Idea
+
+Here is the procedures:
+
+1. **Initialize** predictions as the global mean of the outcome (a reasonable starting guess).
+2. **Compute residuals**: the difference between the true values and the current predictions.
+3. **Fit a shallow tree** to predict those residuals using a random subset of data and features.
+4. **Update predictions** by adding a small fraction of the new tree's predictions (scaled by the *learning rate* $\eta$).
+5. **Recompute residuals** and repeat.
+
+After many iterations, the ensemble's predictions converge toward the true outcome. Each tree is a small correction; the learning rate keeps any single tree from overcorrecting and sending predictions off course.
+
+This is called **gradient descent** because the residuals of a squared-error loss function are exactly its negative gradient. Fitting a tree to residuals is equivalent to taking a step in the direction that reduces prediction error most steeply. For other loss functions (e.g., log-loss for classification), the "residuals" are replaced by the analogous gradient of the loss.
+
+## Building Gradient Boosting By Hand
+
+To make this concrete, let's implement a simplified version from scratch. We'll use a 100-observation sample, keep it to numeric predictors, and predict whether a student passed.
+
+```{r load_data}
+
+
+ou <- read_csv("oulad.csv") %>%
+  mutate(result = fct_relevel(as_factor(result), c("passed", "not_passed"))) %>%
   select(-final_result)
+
+sample_data_id <- ou %>%
+  sample_n(100) %>%
+  mutate(y = ifelse(result == "passed", 1, 0)) %>%
+  select(where(is.numeric))
+
+sample_data<-sample_data_id%>%
+  select(-id_student)
 ```
 
-```{r}
-ou_split<-initial_split(ou)
+Next, set our hyperparameters and initialize predictions as the mean:
 
-ou_train<-training(ou_split)
+```{r gb_by_hand}
+eta            <- 0.1   # learning rate
+sampling_rate  <- 0.8   # fraction of rows used per iteration
+num_iterations <- 100   # number of boosting rounds
+num_features   <- 5     # features randomly selected per round
 
-ou_test<-testing(ou_split)
+# Initialize: predict the mean, compute residuals
+sample_data <- sample_data %>%
+  mutate(
+    prediction = mean(y),
+    residuals  = y - prediction
+  )
+```
+
+Now the boosting loop. At each iteration we: sample the data, pick random features, fit a tree to the **residuals**, predict on the full dataset, and update.
+
+```{r boosting-loop, results='hide'}
+# Storage for convergence plot
+iteration_results <- tibble(ID = seq_len(nrow(sample_data)), y_true = sample_data$y)
+
+for (i in seq_len(num_iterations)) {
+
+  # 1. Subsample rows
+  sampled_data <- sample_frac(sample_data, sampling_rate)
+
+  # 2. Randomly select features (exclude bookkeeping columns)
+  feature_cols     <- setdiff(names(sampled_data), c("y", "prediction", "residuals", "tree_output"))
+  selected_features <- sample(feature_cols, num_features)
+
+  # 3. Fit a regression tree to the residuals
+  tree_formula <- as.formula(paste("residuals ~", paste(selected_features, collapse = " + ")))
+  tree <- rpart(tree_formula, data = sampled_data, method = "anova")
+
+  # (Uncomment to watch each tree)
+   #rpart.plot(tree, main = paste("Iteration", i))
+
+  # 4. Predict residuals for the full dataset and update predictions
+  sample_data <- sample_data %>%
+    mutate(
+      tree_output = predict(tree, sample_data),
+      prediction  = prediction + (eta * tree_output),
+      residuals   = y - prediction
+    )
+
+  # Store predictions for visualization
+  iteration_results[[paste0("iter_", i)]] <- sample_data$prediction
+}
+```
+
+Each point is one iteration's prediction value. Early iterations are close to the mean; later ones have converged toward the true 0/1 outcomes. The learning rate $\eta$ controls how quickly (and how stably) this happens.
+
+
+```{r gb-animation, eval=FALSE}
+
+ou <- read_csv("oulad.csv") %>%
+  mutate(result = fct_relevel(as_factor(result), c("passed", "not_passed"))) %>%
+  select(-final_result)
+
+sample_data <- ou %>%
+  sample_n(100) %>%
+  mutate(y = ifelse(result == "passed", 1, 0)) %>%
+  select(where(is.numeric), -id_student)
+
+## Hyperparmams
+eta           <- 0.1
+sampling_rate <- 0.8
+n_iter        <- 100
+n_features    <- 5
+
+## Boosting
+sample_data <- sample_data %>%
+  mutate(prediction = mean(y), residuals = y - prediction)
+
+all_preds <- tibble(
+  ID         = seq_len(nrow(sample_data)),
+  y_true     = sample_data$y,
+  iteration  = 0L,
+  prediction = sample_data$prediction
+)
+
+## Set up to store trees
+trees<-vector("list" ,n_iter)
+for (i in seq_len(n_iter)) {
+  sampled_data      <- sample_frac(sample_data, sampling_rate)
+  feature_cols      <- setdiff(names(sampled_data),
+                               c("y", "prediction", "residuals", "tree_output"))
+  selected_features <- sample(feature_cols, n_features)
+
+  tree <- rpart(
+    as.formula(paste("residuals ~", paste(selected_features, collapse = " + "))),
+    data    = sampled_data,
+    method  = "anova",
+    control = rpart.control(maxdepth = 3)
+  )
+
+  # Inside the loop, after fitting:
+trees[[i]] <- tree
+  
+  sample_data <- sample_data %>%
+    mutate(
+      tree_output = predict(tree, sample_data),
+      prediction  = prediction + eta * tree_output,
+      residuals   = y - prediction
+    )
+
+  all_preds <- bind_rows(
+    all_preds,
+    tibble(
+      ID         = seq_len(nrow(sample_data)),
+      y_true     = sample_data$y,
+      iteration  = i,
+      prediction = sample_data$prediction
+    )
+  )
+}
+
+anim_data  <- filter(all_preds, iteration > 0)
+truth_data <- distinct(anim_data, ID, y_true, iteration)
+
+p <- ggplot() +
+  geom_point(
+    data  = anim_data,
+    aes(x = ID, y = prediction, color = iteration),
+    size  = 2.5,
+    alpha = 0.85
+  ) +
+  geom_point(
+    data   = truth_data,
+    aes(x  = ID, y = y_true),
+    shape  = 4,
+    color  = "black",
+    size   = 2.8,
+    stroke = 1.2
+  ) +
+  scale_color_viridis_c(
+    option = "viridis",
+    limits = c(1, n_iter),
+    name   = "Iteration"
+  ) +
+  scale_y_continuous(limits = c(-0.15, 1.2)) +
+  labs(
+    title    = "Gradient boosting convergence  \u00b7  iteration {frame_time}",
+    subtitle = sprintf(
+      "\u03b7 = %.2f  \u00b7  subsample = %.0f%%  \u00b7  features/split = %d",
+      eta, sampling_rate * 100, n_features
+    ),
+    x       = "Observation",
+    y       = "Predicted value",
+    caption = "\u00d7 = true outcome     \u25cf viridis scale = earlier \u2192 later iterations"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title    = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    plot.caption  = element_text(color = "grey50", hjust = 0)
+  ) +
+  transition_time(iteration) +
+  shadow_mark(alpha = 0.2, size = 1.2)
+
+
+animate(
+  p,
+  nframes  = n_iter,
+  fps      = 2,
+  width    = 900,
+  height   = 550,
+  renderer = gifski_renderer("gbm_convergence.gif")
+)
+
 ```
 
 
-## Formula and Recipe, same as last time
+### Watching Predictions Converge
 
-```{r}
-rf_formula<-as.formula("result~.")
+```{r final_converge_plot}
+plot_data <- iteration_results %>%
+  pivot_longer(
+    cols      = starts_with("iter_"),
+    names_to  = "iteration",
+    values_to = "prediction"
+  ) %>%
+  mutate(iteration_num = as.integer(str_extract(iteration, "[0-9]+")))
+
+ggplot(plot_data, aes(x = ID, y = prediction, color = iteration_num, group = iteration)) +
+  geom_point(alpha = 0.4,size=.5) +
+  geom_point(aes(y = y_true), shape = 4, color = "black", size = 2, data = distinct(plot_data, ID, y_true,iteration)) +
+  scale_color_viridis_c(name = "Iteration") +
+  labs(
+    title = "Prediction convergence over boosting iterations",
+    subtitle = "Black × marks = true outcomes; points = evolving predictions",
+    x = "Observation ID", y = "Predicted value"
+  ) +
+  theme_minimal()
 ```
 
 
+
+
+### How Good Did We Get?
+
 ```{r}
-ou_rec<-recipe(rf_formula,ou_train)%>%
-  update_role(id_student,new_role="id")%>%
-  update_role(result,new_role = "outcome")%>%
-  step_other(all_nominal_predictors(),threshold = .05)%>%
-  step_unknown(all_nominal_predictors())%>%
-  step_dummy(all_nominal_predictors())%>%
+results_tbl <- sample_data %>%
+  mutate(y = as_factor(y)) %>%
+  select(y, prediction)
+
+roc_auc(results_tbl, truth = y, prediction, event_level = "second")
+```
+
+Not bad for a hand-rolled booster on 100 observations. In fact, a little too good! It wodn't do as well on testing data. 
+
+```{r}
+test_data <- ou %>%
+  anti_join(sample_data_id, by = "id_student") %>%
+  sample_n(100) %>%
+  mutate(y = ifelse(result == "passed", 1, 0)) %>%
+  select(where(is.numeric), -id_student) %>%
+  mutate(prediction = mean(sample_data$y))
+
+for (tree in trees) {
+  test_data <- test_data %>%
+    mutate(prediction = prediction + eta * predict(tree, test_data))
+}
+
+test_data %>%
+  mutate(y = as_factor(y)) %>%
+  roc_auc(truth = y, prediction, event_level = "second")
+```
+
+Still, gradient boosting ftw! 
+
+---
+
+# Part 2: XGBoost — Gradient Boosting, Engineered for Scale
+
+Our hand-built booster captures the essential logic, but it leaves a lot of performance on the table. **XGBoost (Extreme Gradient Boosting)** extends the same framework with four major innovations:
+
+## 1. Second-Order Optimization (the "Extreme" part)
+
+Our booster uses only the **first derivative** (gradient) of the loss — the residuals. XGBoost also incorporates the **second derivative** (Hessian), which measures how steeply the gradient is changing. Think of the gradient as knowing which direction is downhill; the Hessian tells you *how steep* the slope is, allowing for a larger, more confident step in flat regions and a smaller, more cautious step in steep ones.
+
+This is analogous to Newton's method for optimization versus plain gradient descent. The result is that XGBoost typically reaches good performance in fewer trees.
+
+![First-order gradient descent](gradient_descent.jpg
+)
+
+
+![XG Boost 1st and Second](xgboost_first_vs_second_derivative.png)
+
+## 2. Regularization
+
+XGBoost adds explicit $L_1$ and $L_2$ penalties on leaf weights and a cost for adding extra leaves. This discourages overly complex trees and acts as a continuous form of pruning. The `loss_reduction` parameter (called $\gamma$ internally) requires a minimum gain before a split is accepted.
+
+## 3. Stochastic Subsampling
+
+Like our hand-built version, XGBoost can subsample both **rows** (`sample_size`) and **columns** (`mtry`) at each tree or each split. This introduces the same diversity that makes random forests powerful, while preserving the sequential correction structure of boosting.
+
+## 4. Efficient Tree Construction via Weighted Quantile Sketching
+
+Finding the best split in a continuous feature normally requires sorting all values — expensive for large datasets. XGBoost uses **weighted quantile sketching** to approximate the distribution of each feature with a compact set of representative thresholds. Data points are weighted by their second derivative (Hessian) so that observations with more uncertain predictions (higher curvature) have more influence on where splits are placed. This approximation is provably within a controllable error bound, enabling XGBoost to handle millions of rows efficiently.
+
+## 5. Native Missing Data Handling
+
+Rather than requiring imputation, XGBoost learns a default direction for each split when a value is missing — sending missing observations left or right based on which direction reduces loss more during training.
+
+---
+
+# Part 3: Fitting XGBoost with tidymodels
+
+## Data Setup
+
+```{r}
+ou_split <- initial_split(ou)
+ou_train  <- training(ou_split)
+ou_test   <- testing(ou_split)
+```
+
+## Recipe
+
+```{r}
+rf_formula <- as.formula("result ~ .")
+
+ou_rec <- recipe(rf_formula, ou_train) %>%
+  update_role(id_student, new_role = "id") %>%
+  update_role(result, new_role = "outcome") %>%
+  step_other(all_nominal_predictors(), threshold = 0.05) %>%
+  step_unknown(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
   step_zv(all_predictors())
 ```
 
+## Model Specification
 
-
-
-## XGboost Specification
-
-From: https://juliasilge.com/blog/xgboost-tune-volleyball/
-
+Each tunable parameter maps directly onto the theory above:
 
 ```{r}
 xgb_spec <- boost_tree(
-  trees = 100, 
-  tree_depth = tune(), 
-  min_n = tune(),
-  loss_reduction = tune(), ## first three: model complexity
-  sample_size = tune(), 
-  mtry = tune(),         ## randomness
-  learn_rate = tune() ## step size
+  trees        = 100,
+  tree_depth   = tune(),   # controls tree complexity
+  min_n        = tune(),   # minimum observations per node
+  loss_reduction = tune(), # γ: minimum gain to accept a split
+  sample_size  = tune(),   # row subsampling fraction
+  mtry         = tune(),   # column subsampling per split
+  learn_rate   = tune()    # η: step size
 ) %>%
   set_engine("xgboost") %>%
   set_mode("classification")
 ```
 
-# XGBoost Hyperparameter Descriptions
+### Hyperparameter Guide
 
-## 1. trees (Number of Boosted Trees)
-- **Definition**: The total number of boosting iterations (i.e., the number of trees in the ensemble).
-- **Effect**: More trees generally lead to better performance, but excessive trees can result in overfitting.
-- **Default in XGBoost**: 100
-- **Tuning Considerations**: Usually, you should tune this in combination with `learning_rate`—lower learning rates often require more trees.
+| Parameter | What it controls | Higher values → | Lower values → |
+|-----------|-----------------|-----------------|----------------|
+| `tree_depth` | Max splits per tree | More complex trees, risk of overfit | Simpler, more regularized |
+| `min_n` | Min obs to split a node | More conservative splits | More flexible |
+| `loss_reduction` | Min gain ($\gamma$) to split | Fewer, higher-quality splits | More, finer splits |
+| `sample_size` | Row subsampling fraction | Less randomness | More randomness, less overfit |
+| `mtry` | Features per split | More deterministic | More diverse trees |
+| `learn_rate` | Step size ($\eta$) | Faster, less stable | Slower, more stable |
 
-## 2. tree_depth (Maximum Depth of a Tree)
-- **Definition**: The maximum depth each individual decision tree can reach.
-- **Effect**:
-  - Deeper trees capture more complex interactions but can overfit.
-  - Shallower trees promote regularization and generalization.
-- **Default in XGBoost**: 6
-- **Typical Range**: 3–10
-- **Tuning Considerations**: Start with a small value (e.g., 3–6) and increase gradually. Higher values require more computational power.
+**Practical starting points:** `learn_rate` between 0.01–0.1, `tree_depth` between 3–6, `sample_size` around 0.7–0.9. Lower learning rates typically require more trees.
 
-## 3. min_n (Minimum Node Size)
-- **Definition**: The minimum number of observations required in a node to allow further splits.
-- **Effect**:
-  - Higher values prevent overfitting by ensuring splits happen only when there's sufficient data.
-  - Lower values make the model more flexible but increase the risk of overfitting.
-- **Default in XGBoost**: 1
-- **Typical Range**: 1–20
-- **Tuning Considerations**: Start with a lower value and increase if overfitting occurs.
-
-## 4. loss_reduction (Gamma)
-- **Definition**: The minimum loss reduction required to make a further split in a tree.
-- **Effect**:
-  - Higher values prevent splits that don't offer significant information gain, acting as a form of regularization.
-  - Lower values allow more splits, making the model more flexible.
-- **Default in XGBoost**: 0
-- **Typical Range**: 0–10
-- **Tuning Considerations**: If overfitting occurs, try increasing this value.
-
-## 5. sample_size (Subsample Ratio)
-- **Definition**: The fraction of training data used to grow each tree.
-- **Effect**:
-  - Values < 1 introduce randomness, improving generalization and reducing overfitting.
-  - Values closer to 1 lead to deterministic trees with less variance but more risk of overfitting.
-- **Default in XGBoost**: 1 (no subsampling)
-- **Typical Range**: 0.5–1
-- **Tuning Considerations**: Lower values (e.g., 0.7–0.9) often work well.
-
-## 6. mtry (Feature Subsampling)
-- **Definition**: The number of features randomly selected at each split.
-- **Effect**:
-  - Lower values introduce more randomness, reducing overfitting.
-  - Higher values make the model more deterministic.
-- **Default in XGBoost**: Uses all features
-- **Typical Range**: `sqrt(number of features)` or `log2(number of features)`
-- **Tuning Considerations**: Start with `sqrt(p)` for classification and `p/3` for regression.
-
-## 7. learn_rate (Learning Rate)
-- **Definition**: The step size shrinkage parameter that controls how much the model learns from each tree.
-- **Effect**:
-  - Lower values make learning more gradual, reducing the risk of overfitting.
-  - Higher values speed up training but risk missing the optimal solution.
-- **Default in XGBoost**: 0.3
-- **Typical Range**: 0.01–0.3
-- **Tuning Considerations**: Lower values (e.g., 0.01–0.1) often work better, but may require more trees.
-
-
-## Summary of Tuning Considerations
-
-| Hyperparameter | Regularization Effect | Flexibility |
-|---------------|----------------------|------------|
-| `tree_depth` | Higher depth → More complexity, more overfitting | Shallower trees generalize better |
-| `min_n` | Higher values prevent splits with few data points | Lower values allow more splits |
-| `loss_reduction` | Higher values prevent unnecessary splits | Lower values allow more granular splits |
-| `sample_size` | Lower values introduce more randomness | Higher values make trees more deterministic |
-| `mtry` | Lower values introduce randomness | Higher values use more features per split |
-| `learn_rate` | Lower values improve generalization | Higher values speed up training |
-
-
-
-
-```{r}
-xgb_grid <- grid_space_filling(
-  tree_depth(),
-  min_n(),
-  loss_reduction(), 
-  sample_size = sample_prop(),
-  finalize(mtry(), ou_train),
-  learn_rate(),
-  size = 30
-)
-```
-
+## Workflow, Tuning Grid, and Resamples
 
 ```{r}
 ou_wf <- workflow() %>%
   add_recipe(ou_rec) %>%
   add_model(xgb_spec)
-```
 
-```{r}
-ou_rs<-ou%>%vfold_cv()
-```
-
-## Fit Model
-
-```{r}
-fit_model<-FALSE
-
-if(fit_model){
-xg_tune_res <- tune_grid(
-  ou_wf,
-  grid=xgb_grid,
-  resamples = ou_rs,
+xgb_grid <- grid_space_filling(
+  tree_depth(),
+  min_n(),
+  loss_reduction(),
+  sample_size = sample_prop(),
+  finalize(mtry(), ou_train),
+  learn_rate(),
+  size = 30
 )
-save(xg_tune_res,file="xg_tune_res.Rdata")
-} else{
+
+ou_rs <- vfold_cv(ou_train)
+```
+
+## Fit (or Load) Tuning Results
+
+```{r fit_model}
+fit_model <- FALSE
+
+if (fit_model) {
+  xg_tune_res <- tune_grid(
+    ou_wf,
+    grid      = xgb_grid,
+    resamples = ou_rs
+  )
+  save(xg_tune_res, file = "xg_tune_res.Rdata")
+} else {
   load("xg_tune_res.Rdata")
 }
 ```
 
-```{r}
+## Explore Tuning Results
+
+```{r explore_tune_results}
 xg_tune_res %>%
   collect_metrics() %>%
   filter(.metric == "roc_auc") %>%
-  select(mean, mtry:sample_size) %>%
-  pivot_longer(mtry:sample_size,
-               values_to = "value",
-               names_to = "parameter"
-  ) %>%
+  pivot_longer(mtry:sample_size, names_to = "parameter", values_to = "value") %>%
   ggplot(aes(value, mean, color = parameter)) +
   geom_point(alpha = 0.8, show.legend = FALSE) +
   facet_wrap(~parameter, scales = "free_x") +
-  labs(x = NULL, y = "AUC")
-```
-
-```{r}
-show_best(xg_tune_res,metric="roc_auc")
-```
-
-```{r}
-best_auc <- select_best(xg_tune_res,metric =  "roc_auc")
-```
-
-```{r}
-final_xgb <- finalize_workflow(
-  ou_wf,
-  best_auc
-)
-```
-
-## Variable importance
-How xgb.importance() Computes and Scales Feature Importance
-
-Feature importance in XGBoost is derived from individual trees and aggregated across all boosting rounds. The scores are then normalized so that they sum to 1 (or 100%) for easier interpretation.
-
-**1. Raw Computation (Before Scaling)**
-
-For each feature, XGBoost tracks:
-
-Gain: The total improvement in loss function when a feature is used in a split.
-
-Cover: The total number of samples impacted by splits on a feature.
-
-Frequency: The number of times a feature is used for splitting.
-
-At first, these values are raw counts or sums.
-
-**2. Normalization (Scaling)**
-
-By default, xgb.importance() scales the importance scores so they sum to 1 (or 100%):
-
-Normalized Importance = (Raw Importance for Feature i) / (Sum of Raw Importance for All Features)
-
-Thus, after scaling:
-
-The sum of all feature importance values is 1 (or 100%).
-
-Each feature's importance is expressed as a relative proportion.
-
-```{r}
-final_xgb %>%
-  fit(data = ou_train) %>%
-  extract_fit_parsnip() %>%
-  vip(geom = "point")+
-  geom_point(color="blue")+
+  labs(title = "Hyperparameter effects on ROC AUC", x = NULL, y = "AUC") +
   theme_minimal()
 ```
 
+```{r show_best_params}
+show_best(xg_tune_res, metric = "roc_auc")
+```
+
+## Finalize and Evaluate
+
 ```{r}
+best_auc <- select_best(xg_tune_res, metric = "roc_auc")
+
+final_xgb <- finalize_workflow(ou_wf, best_auc)
+
 final_res <- last_fit(final_xgb, ou_split)
 
 collect_metrics(final_res)
 ```
 
-More intuitive explanation of the gradient descent step, how it relates to the Hessian. 
+---
 
-Below, we're going to build a stochastic gradient descent model by hand. This isn't a full xgboost, but gives you a sense of how the procedure works. To keep things simple, we're going to work with a sample of just 100 units from the overall dataset. 
+# Part 4: Interpreting the Model
 
-```{r}
+## Variable Importance
 
-# Sample 100 units from dataset `ou`
-sample_data <- ou%>%
-  sample_n(100)%>%
-  mutate(y=ifelse(result=="passed",1,0))%>%
-  select(where(is.numeric),-id_student)
-```
+XGBoost tracks three importance metrics for each feature across all trees:
 
-We'll next define a few parameters, including the learning rate, the sampling rate, and the number of features to try. 
+- **Gain**: Total reduction in loss when the feature is used to split. The most directly interpretable measure — how much does this feature improve predictions?
+- **Cover**: Total number of observations affected by splits on this feature.
+- **Frequency**: How often the feature is used for any split.
 
-```{r}
-# Define learning rate
-eta <- 0.1
-
-# Define sampling rate
-
-sampling_rate<-.8
-
-# Define number of boosting iterations
-num_iterations <- 100
-
-# Number of features to randomly select in each iteration
-num_features <- 5
-
-```
-
-The procedure starts by just guessing the mean as the prediction.
+All three are normalized to sum to 1 (or 100%) for comparison. `vip` defaults to Gain.
 
 ```{r}
-# Initialize predictions as the mean of y
-sample_data$prediction <- mean(sample_data$y)
-
- # Compute residuals (errors)
-  sample_data$residuals <- sample_data$y - sample_data$prediction
+final_xgb %>%
+  fit(data = ou_train) %>%
+  extract_fit_parsnip() %>%
+  vip(geom = "point") +
+  geom_point(color = "steelblue") +
+  labs(title = "XGBoost variable importance (Gain)") +
+  theme_minimal()
 ```
 
+---
 
-I'm going to store the results as I go
-```{r}
-# Store predictions over iterations for visualization
-iteration_results <- data.frame(ID = 1:nrow(sample_data), y_true = sample_data$y)
+# Summary: The Family Tree
 
-  
-```
+| Method | Tree structure | How trees relate | Key strength |
+|--------|---------------|-----------------|--------------|
+| Single decision tree | Deep | Independent | Interpretable |
+| Random forest | Deep | Independent (bagged) | Variance reduction |
+| Gradient boosting | Shallow | Sequential (residuals) | Bias reduction |
+| XGBoost | Shallow | Sequential + 2nd-order | Speed + regularization |
 
-Below is the boosting loop. It works like this:
-
-1. Sample 80% of the data
-2. Randomly select 5 features
-3. Calculate the residuals from the existing predictions
-4. Run a tree using the sampled data and 5 randomly selected features
-5. Use that tree to predict the probability of the outcome in the FULL dataset
-6. Use the prediction times the learning rate eta as the prediction for that iteration
-
-6. Iterate over steps 1-
-
-```{r}
-# Boosting loop
-num_iterations=100
-
-for (i in 1:num_iterations) {
-  cat("\nIteration:", i, "\n")
-  
-  # Sample 80% of data
-    sampled_data <- sample_frac(sample_data,sampling_rate)
-  
-  # Select a random subset of features (excluding target and prediction columns)
-  feature_cols <- setdiff(names(sampled_data), c("y", "prediction","residuals","tree_output"))
-  selected_features <- sample(feature_cols, num_features)
-  
- 
-  # Fit a regression tree using only selected features
-  formula <- as.formula(paste("residuals ~", paste(selected_features, collapse = " + ")))
-  
-  tree <- rpart(formula, data = sampled_data, method = "anova")
-  
-  
-#dev.new()
-  
-title=paste("Results for iteration",i)
-rpart.plot(tree,main=title)
-
-  # Get tree predictions (fitted residuals) for the full dataset (sample_data)
-  sample_data$tree_output <- predict(tree, sample_data)
-  
-
-  # Update predictions using learning rate
-  sample_data$prediction <- sample_data$prediction + eta * sample_data$tree_output
-  
-  # Compute new residuals
-  sample_data$residuals <- sample_data$y - sample_data$prediction
-  
-  # Store predictions for visualization
-  iteration_results[[paste0("Iteration_", i)]] <- sample_data$prediction
-}
-
-
-# Convert data for ggplot visualization
-plot_data <- iteration_results %>%
-  pivot_longer(cols = starts_with("Iteration"), names_to = "Iteration", values_to = "Prediction")
-
-# Final plot showing prediction convergence
-ggplot(plot_data, aes(x = ID, y = Prediction,color=Iteration)) +
-  geom_point(size = .1,alpha=.3) +
-  geom_line(aes(group = Iteration), alpha = 0.7) +
-  geom_point(aes(y = y_true), shape = 4, color = "black", size = 3) +  # True values
-  labs(title = "Prediction Convergence Over Iterations",
-       x = "Observation ID",
-       y = "Predicted Value") +
-  theme_minimal()+
-  theme(legend.position="none")
-
-
-
-```
-
-```{r}
-results_tbl <- sample_data %>%
-    mutate(y = as.factor(y)) %>%
-    select(y, prediction)
-  
-  # Compute ROC AUC using yardstick
-  auc_score <- roc_auc(results_tbl, truth = y,prediction,event_level = "second")
-```
-
-
-```{r}
-graphics.off()
-```
-
+The move from random forests to gradient boosting shifts the focus from *reducing variance through averaging* to *reducing bias through sequential correction*. XGBoost adds engineering sophistication — second-order updates, regularization, and approximate splitting — that makes the approach practical at scale.
