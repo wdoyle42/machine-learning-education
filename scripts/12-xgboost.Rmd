@@ -44,8 +44,6 @@ This is called **gradient descent** because the residuals of a squared-error los
 To make this concrete, let's implement a simplified version from scratch. We'll use a 100-observation sample, keep it to numeric predictors, and predict whether a student passed.
 
 ```{r load_data}
-
-
 ou <- read_csv("oulad.csv") %>%
   mutate(result = fct_relevel(as_factor(result), c("passed", "not_passed"))) %>%
   select(-final_result)
@@ -111,7 +109,6 @@ for (i in seq_len(num_iterations)) {
 ```
 
 Each point is one iteration's prediction value. Early iterations are close to the mean; later ones have converged toward the true 0/1 outcomes. The learning rate $\eta$ controls how quickly (and how stably) this happens.
-
 
 ```{r gb-animation, eval=FALSE}
 
@@ -348,7 +345,8 @@ ou_rec <- recipe(rf_formula, ou_train) %>%
   step_other(all_nominal_predictors(), threshold = 0.05) %>%
   step_unknown(all_nominal_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
-  step_zv(all_predictors())
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
 ```
 
 ## Model Specification
@@ -449,6 +447,24 @@ final_res <- last_fit(final_xgb, ou_split)
 collect_metrics(final_res)
 ```
 
+```{r}
+# onfusion Matrix, Sensitivity, and Specificity
+
+test_preds <- collect_predictions(final_res)
+
+test_preds <- test_preds %>%
+  mutate(predicted_class = if_else(.pred_passed >= 0.5, "passed", "not_passed") %>%
+           fct_relevel(c("passed", "not_passed")))
+
+conf_mat(test_preds, truth = result, estimate = predicted_class)
+
+class_metrics <- metric_set(sensitivity, specificity)
+
+test_preds %>%
+  class_metrics(truth = result, estimate = predicted_class, event_level = "first")
+```
+
+
 ---
 
 # Part 4: Interpreting the Model
@@ -467,11 +483,35 @@ All three are normalized to sum to 1 (or 100%) for comparison. `vip` defaults to
 final_xgb %>%
   fit(data = ou_train) %>%
   extract_fit_parsnip() %>%
-  vip(geom = "point") +
+  vip(geom = "point",type="gain") +
   geom_point(color = "steelblue") +
   labs(title = "XGBoost variable importance (Gain)") +
   theme_minimal()
 ```
+
+```{r}
+final_xgb %>%
+  fit(data = ou_train) %>%
+  extract_fit_parsnip() %>%
+  vip(geom = "point",type="coverage") +
+  geom_point(color = "steelblue") +
+  labs(title = "XGBoost variable importance (Coverage)") +
+  theme_minimal()
+```
+
+
+```{r}
+final_xgb %>%
+  fit(data = ou_train) %>%
+  extract_fit_parsnip() %>%
+  vip(geom = "point",type="frequency") +
+  geom_point(color = "steelblue") +
+  labs(title = "XGBoost variable importance (Frequency)") +
+  theme_minimal()
+```
+
+
+
 
 ---
 
