@@ -17,7 +17,7 @@ library(gganimate)
 library(gifski)
 ```
 
----
+------------------------------------------------------------------------
 
 # Part 1: From Random Forests to Gradient Boosting
 
@@ -29,11 +29,11 @@ The key insight is this: if we know where our current predictions are wrong (the
 
 Here is the procedures:
 
-1. **Initialize** predictions as the global mean of the outcome (a reasonable starting guess).
-2. **Compute residuals**: the difference between the true values and the current predictions.
-3. **Fit a shallow tree** to predict those residuals using a random subset of data and features.
-4. **Update predictions** by adding a small fraction of the new tree's predictions (scaled by the *learning rate* $\eta$).
-5. **Recompute residuals** and repeat.
+1.  **Initialize** predictions as the global mean of the outcome (a reasonable starting guess).
+2.  **Compute residuals**: the difference between the true values and the current predictions.
+3.  **Fit a shallow tree** to predict those residuals using a random subset of data and features.
+4.  **Update predictions** by adding a small fraction of the new tree's predictions (scaled by the *learning rate* $\eta$).
+5.  **Recompute residuals** and repeat.
 
 After many iterations, the ensemble's predictions converge toward the true outcome. Each tree is a small correction; the learning rate keeps any single tree from overcorrecting and sending predictions off course.
 
@@ -229,7 +229,6 @@ animate(
 
 ```
 
-
 ### Watching Predictions Converge
 
 ```{r final_converge_plot}
@@ -253,9 +252,6 @@ ggplot(plot_data, aes(x = ID, y = prediction, color = iteration_num, group = ite
   theme_minimal()
 ```
 
-
-
-
 ### How Good Did We Get?
 
 ```{r}
@@ -266,7 +262,7 @@ results_tbl <- sample_data %>%
 roc_auc(results_tbl, truth = y, prediction, event_level = "second")
 ```
 
-Not bad for a hand-rolled booster on 100 observations. In fact, a little too good! It wodn't do as well on testing data. 
+Not bad for a hand-rolled booster on 100 observations. In fact, a little too good! It won't do as well on testing data.
 
 ```{r}
 test_data <- ou %>%
@@ -286,9 +282,9 @@ test_data %>%
   roc_auc(truth = y, prediction, event_level = "second")
 ```
 
-Still, gradient boosting ftw! 
+Still, gradient boosting ftw!
 
----
+------------------------------------------------------------------------
 
 # Part 2: XGBoost — Gradient Boosting, Engineered for Scale
 
@@ -300,9 +296,7 @@ Our booster uses only the **first derivative** (gradient) of the loss — the re
 
 This is analogous to Newton's method for optimization versus plain gradient descent. The result is that XGBoost typically reaches good performance in fewer trees.
 
-![First-order gradient descent](gradient_descent.jpg
-)
-
+![First-order gradient descent](gradient_descent.jpg)
 
 ![XG Boost 1st and Second](xgboost_first_vs_second_derivative.png)
 
@@ -322,7 +316,7 @@ Finding the best split in a continuous feature normally requires sorting all val
 
 Rather than requiring imputation, XGBoost learns a default direction for each split when a value is missing — sending missing observations left or right based on which direction reduces loss more during training.
 
----
+------------------------------------------------------------------------
 
 # Part 3: Fitting XGBoost with tidymodels
 
@@ -370,11 +364,11 @@ xgb_spec <- boost_tree(
 ### Hyperparameter Guide
 
 | Parameter | What it controls | Higher values → | Lower values → |
-|-----------|-----------------|-----------------|----------------|
+|-----------------|-------------------|-------------------|------------------|
 | `tree_depth` | Max splits per tree | More complex trees, risk of overfit | Simpler, more regularized |
 | `min_n` | Min obs to split a node | More conservative splits | More flexible |
 | `loss_reduction` | Min gain ($\gamma$) to split | Fewer, higher-quality splits | More, finer splits |
-| `sample_size` | Row subsampling fraction | Less randomness | More randomness, less overfit |
+| `sample_size` | Row subsampling fraction | Less randomness in the training dataset, learners are less "weak" | More randomness, less overfit |
 | `mtry` | Features per split | More deterministic | More diverse trees |
 | `learn_rate` | Step size ($\eta$) | Faster, less stable | Slower, more stable |
 
@@ -448,7 +442,7 @@ collect_metrics(final_res)
 ```
 
 ```{r}
-# onfusion Matrix, Sensitivity, and Specificity
+# Confusion Matrix, Sensitivity, and Specificity
 
 test_preds <- collect_predictions(final_res)
 
@@ -464,8 +458,7 @@ test_preds %>%
   class_metrics(truth = result, estimate = predicted_class, event_level = "first")
 ```
 
-
----
+------------------------------------------------------------------------
 
 # Part 4: Interpreting the Model
 
@@ -473,11 +466,11 @@ test_preds %>%
 
 XGBoost tracks three importance metrics for each feature across all trees:
 
-- **Gain**: Total reduction in loss when the feature is used to split. The most directly interpretable measure — how much does this feature improve predictions?
-- **Cover**: Total number of observations affected by splits on this feature.
-- **Frequency**: How often the feature is used for any split.
+-   **Gain**: Total reduction in loss when the feature is used to split. The most directly interpretable measure — how much does this feature improve predictions?
+-   **Cover**: Total number of observations affected by splits on this feature.
+-   **Frequency**: How often the feature is used for any split.
 
-All three are normalized to sum to 1 (or 100%) for comparison. `vip` defaults to Gain.
+All three are normalized to sum to 1 (or 100%) for comparison. `vip` defaults to Gain. The vips that result can be interpreted as what proportion of the total metric this variable accounts for among all variables.
 
 ```{r}
 final_xgb %>%
@@ -499,7 +492,6 @@ final_xgb %>%
   theme_minimal()
 ```
 
-
 ```{r}
 final_xgb %>%
   fit(data = ou_train) %>%
@@ -510,15 +502,12 @@ final_xgb %>%
   theme_minimal()
 ```
 
-
-
-
----
+------------------------------------------------------------------------
 
 # Summary: The Family Tree
 
 | Method | Tree structure | How trees relate | Key strength |
-|--------|---------------|-----------------|--------------|
+|-----------------|------------------|---------------------|-----------------|
 | Single decision tree | Deep | Independent | Interpretable |
 | Random forest | Deep | Independent (bagged) | Variance reduction |
 | Gradient boosting | Shallow | Sequential (residuals) | Bias reduction |

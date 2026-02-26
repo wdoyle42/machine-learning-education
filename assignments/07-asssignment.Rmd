@@ -4,9 +4,6 @@ author: "Will Doyle"
 date: "2025-03-20"
 output: github_document
 ---
-Here’s a structured assignment with 10 short-answer questions on neural network architecture, focusing on multinomial outcomes and cross-entropy loss.
-
----
 
 ### **Assignment: Neural Network Architecture for Multinomial Outcomes**  
 **Instructions:** Answer the following questions in 2–4 sentences each. Be concise but precise in your explanations.  
