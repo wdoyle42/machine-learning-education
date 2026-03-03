@@ -57,3 +57,62 @@ xgb_spec <- boost_tree(
 
 ```
 
+
+```{r}
+pf_wf <- workflow() %>%
+  add_recipe(pf_rec) %>%
+  add_model(xgb_spec)
+```
+
+
+```{r}
+
+
+xgb_grid <- grid_space_filling(
+  tree_depth(),
+  min_n(),
+  loss_reduction(),
+  sample_size = sample_prop(),
+  finalize(mtry(), ou_train),
+  learn_rate(),
+  size = 30
+)
+
+
+```
+
+```{r}
+pf_rs<-mc_cv(pf_train,times=25)
+```
+
+
+```{r}
+fit_model <- TRUE
+
+if (fit_model) {
+  xg_tune_res <- tune_grid(
+    pf_wf,
+    grid      = xgb_grid,
+    resamples = pf_rs
+  )
+  save(xg_pf_tune_res, file = "xg_pf_tune_res.Rdata")
+} else {
+  load("xg_pf_tune_res.Rdata")
+}
+
+```
+
+```{r}
+show_best(xg_tune_res, metric = "rmse")
+```
+
+```{r}
+best_auc <- select_best(xg_tune_res, metric = "roc_auc")
+
+final_xgb <- finalize_workflow(ou_wf, best_auc)
+
+final_res <- last_fit(final_xgb, ou_split)
+
+collect_metrics(final_res)
+```
+
