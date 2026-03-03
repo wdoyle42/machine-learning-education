@@ -107,11 +107,11 @@ show_best(xg_tune_res, metric = "rmse")
 ```
 
 ```{r}
-best_auc <- select_best(xg_tune_res, metric = "roc_auc")
+best_rmse <- select_best(xg_tune_res, metric = "rmse")
 
-final_xgb <- finalize_workflow(ou_wf, best_auc)
+final_xgb <- finalize_workflow(ou_wf, best_rmse)
 
-final_res <- last_fit(final_xgb, ou_split)
+final_res <- last_fit(final_xgb, pf_split)
 
 collect_metrics(final_res)
 ```
