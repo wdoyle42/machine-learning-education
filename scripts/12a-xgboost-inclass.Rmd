@@ -73,7 +73,7 @@ xgb_grid <- grid_space_filling(
   min_n(),
   loss_reduction(),
   sample_size = sample_prop(),
-  finalize(mtry(), ou_train),
+  finalize(mtry(), pf_train),
   learn_rate(),
   size = 30
 )
