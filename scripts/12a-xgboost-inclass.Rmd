@@ -1,0 +1,57 @@
+---
+title: "In-class: XGBoost Regression with Tidymodels (Kaggle-style train/test)"
+output:githuub_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(vip)        
+```
+
+## Read in Data
+```{r}
+pf<-read_csv("student_performance.csv")%>%
+  select(-id)%>%
+  rename("ps"="productivity_score")
+
+```
+
+
+```{r}
+pf_split <- initial_split(pf)
+pf_train  <- training(pf_split)
+pf_test   <- testing(pf_split)
+```
+
+
+## Recipe
+```{r}
+pf_formula <- as.formula("ps ~ .")
+
+pf_rec <- recipe(pf_formula, pf_train) %>%
+  update_role(student_id, new_role = "id") %>%
+  update_role(ps, new_role = "outcome") %>%
+  step_other(all_nominal_predictors(), threshold = 0.05) %>%
+  step_unknown(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors())%>%
+  step_normalize(all_predictors())
+
+```
+
+
+```{r}
+xgb_spec <- boost_tree(
+  trees        = 100,
+  tree_depth   = tune(),   # controls tree complexity
+  min_n        = tune(),   # minimum observations per node
+  loss_reduction = tune(), # γ: minimum gain to accept a split
+  sample_size  = tune(),   # row subsampling fraction
+  mtry         = tune(),   # column subsampling per split
+  learn_rate   = tune()    # η: step size
+) %>%
+  set_engine("xgboost") %>%
+  set_mode("regression")
+```
+
