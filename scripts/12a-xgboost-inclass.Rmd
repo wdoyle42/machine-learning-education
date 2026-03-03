@@ -42,6 +42,7 @@ pf_rec <- recipe(pf_formula, pf_train) %>%
 
 
 ```{r}
+
 xgb_spec <- boost_tree(
   trees        = 100,
   tree_depth   = tune(),   # controls tree complexity
@@ -53,5 +54,6 @@ xgb_spec <- boost_tree(
 ) %>%
   set_engine("xgboost") %>%
   set_mode("regression")
+
 ```
 
