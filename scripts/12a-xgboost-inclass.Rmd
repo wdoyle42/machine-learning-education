@@ -95,7 +95,7 @@ if (fit_model) {
     grid      = xgb_grid,
     resamples = pf_rs
   )
-  save(xg_pf_tune_res, file = "xg_pf_tune_res.Rdata")
+  save(xg_tune_res, file = "xg_pf_tune_res.Rdata")
 } else {
   load("xg_pf_tune_res.Rdata")
 }
