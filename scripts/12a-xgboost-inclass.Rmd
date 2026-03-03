@@ -6,7 +6,8 @@ output:githuub_document
 ```{r setup, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(tidymodels)
-library(vip)        
+library(vip)
+library(finetune)
 ```
 
 ## Read in Data
@@ -87,13 +88,22 @@ pf_rs<-mc_cv(pf_train,times=25)
 
 
 ```{r}
+sim_anneal_control<-control_sim_anneal(cooling_coef=.02,
+                                          verbose = TRUE,
+                                          save_history = TRUE)
+```
+
+
+```{r}
 fit_model <- TRUE
 
 if (fit_model) {
-  xg_tune_res <- tune_grid(
+  doParallel::registerDoParallel()
+  xg_tune_res <- tune_sim_anneal(
     pf_wf,
-    grid      = xgb_grid,
-    resamples = pf_rs
+    resamples=pf_rs,
+    initial=4,
+    control=sim_anneal_control
   )
   save(xg_tune_res, file = "xg_pf_tune_res.Rdata")
 } else {
@@ -109,7 +119,7 @@ show_best(xg_tune_res, metric = "rmse")
 ```{r}
 best_rmse <- select_best(xg_tune_res, metric = "rmse")
 
-final_xgb <- finalize_workflow(ou_wf, best_rmse)
+final_xgb <- finalize_workflow(pf_wf, best_rmse)
 
 final_res <- last_fit(final_xgb, pf_split)
 
