@@ -33,12 +33,14 @@ pf_formula <- as.formula("ps ~ .")
 pf_rec <- recipe(pf_formula, pf_train) %>%
   update_role(student_id, new_role = "id") %>%
   update_role(ps, new_role = "outcome") %>%
+  step_poly(all_numeric_predictors(degree=3))%>%
   step_other(all_nominal_predictors(), threshold = 0.05) %>%
   step_unknown(all_nominal_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_zv(all_predictors())%>%
   step_normalize(all_predictors())%>%
-  step_interact(~starts_with("gender"):all_numeric_predictors())
+  step_interact(~starts_with("gender"):all_numeric_predictors())%>%
+  
 
 ```
 

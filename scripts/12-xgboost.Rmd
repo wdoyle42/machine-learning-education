@@ -364,7 +364,7 @@ xgb_spec <- boost_tree(
 ### Hyperparameter Guide
 
 | Parameter | What it controls | Higher values → | Lower values → |
-|-----------------|-------------------|-------------------|------------------|
+|------------------|-------------------|-------------------|------------------|
 | `tree_depth` | Max splits per tree | More complex trees, risk of overfit | Simpler, more regularized |
 | `min_n` | Min obs to split a node | More conservative splits | More flexible |
 | `loss_reduction` | Min gain ($\gamma$) to split | Fewer, higher-quality splits | More, finer splits |
@@ -426,7 +426,7 @@ xg_tune_res %>%
 ```
 
 ```{r show_best_params}
-show_best(xg_tune_res, metric = "roc_auc")
+show_best(xg_tune_res, metric = "rmse")
 ```
 
 ## Finalize and Evaluate
@@ -452,7 +452,7 @@ test_preds <- test_preds %>%
 
 conf_mat(test_preds, truth = result, estimate = predicted_class)
 
-class_metrics <- metric_set(sensitivity, specificity)
+class_metrics <- metric_set(sensitivity, specificity,accuracy)
 
 test_preds %>%
   class_metrics(truth = result, estimate = predicted_class, event_level = "first")
@@ -486,7 +486,7 @@ final_xgb %>%
 final_xgb %>%
   fit(data = ou_train) %>%
   extract_fit_parsnip() %>%
-  vip(geom = "point",type="coverage") +
+  vip(geom = "point",type="cover") +
   geom_point(color = "steelblue") +
   labs(title = "XGBoost variable importance (Coverage)") +
   theme_minimal()
@@ -507,7 +507,7 @@ final_xgb %>%
 # Summary: The Family Tree
 
 | Method | Tree structure | How trees relate | Key strength |
-|-----------------|------------------|---------------------|-----------------|
+|------------------|------------------|--------------------|------------------|
 | Single decision tree | Deep | Independent | Interpretable |
 | Random forest | Deep | Independent (bagged) | Variance reduction |
 | Gradient boosting | Shallow | Sequential (residuals) | Bias reduction |
