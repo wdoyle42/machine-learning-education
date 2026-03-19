@@ -25,6 +25,18 @@ pf_train  <- training(pf_split)
 pf_test   <- testing(pf_split)
 ```
 
+## EDA
+
+
+```{r}
+pf_train%>%
+  ggplot(aes(x=ps))+
+  geom_density()
+```
+
+
+
+
 
 ## Recipe
 ```{r}
@@ -33,13 +45,13 @@ pf_formula <- as.formula("ps ~ .")
 pf_rec <- recipe(pf_formula, pf_train) %>%
   update_role(student_id, new_role = "id") %>%
   update_role(ps, new_role = "outcome") %>%
-  step_poly(all_numeric_predictors(degree=3))%>%
+  step_poly(all_numeric_predictors(),degree=3)%>%
   step_other(all_nominal_predictors(), threshold = 0.05) %>%
   step_unknown(all_nominal_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_zv(all_predictors())%>%
   step_normalize(all_predictors())%>%
-  step_interact(~starts_with("gender"):all_numeric_predictors())%>%
+  step_interact(~starts_with("gender"):all_numeric_predictors())
   
 
 ```
@@ -69,20 +81,6 @@ pf_wf <- workflow() %>%
 ```
 
 
-```{r}
-
-xgb_grid <- grid_space_filling(
-  tree_depth(),
-  min_n(),
-  loss_reduction(),
-  sample_size = sample_prop(),
-  finalize(mtry(), pf_train),
-  learn_rate(),
-  size = 30
-)
-
-
-```
 
 ```{r}
 pf_rs<-mc_cv(pf_train,times=25)
@@ -90,7 +88,7 @@ pf_rs<-mc_cv(pf_train,times=25)
 
 
 ```{r}
-sim_anneal_control<-control_sim_anneal(cooling_coef=.02,
+sim_anneal_control<-control_sim_anneal(cooling_coef=.01,
                                           verbose = TRUE,
                                           save_history = TRUE)
 ```

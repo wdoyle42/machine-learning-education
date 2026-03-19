@@ -45,9 +45,11 @@ Instead of treating the image as a 2D matrix, we convert it into a **one-dimensi
 
 ### Neural Network Architecture Overview
 
-With our dataset prepared, we can introduce the structure of a basic **feedforward neural network**, which consists of three main types of layers: 1.
-**Input Layer:** - This layer consists of **784 neurons** (one for each pixel in the input image).
-- Each neuron receives a numerical input corresponding to the pixel intensity.
+With our dataset prepared, we can introduce the structure of a basic **feedforward neural network**, which consists of three main types of layers:
+
+1.  **Input Layer:** - This layer consists of **784 neurons** (one for each pixel in the input image).
+
+-   Each neuron receives a numerical input corresponding to the pixel intensity.
 
 2.  **Hidden Layers (Perceptrons):**
     -   These layers consist of multiple neurons that learn to extract patterns from the input.
@@ -82,8 +84,6 @@ em<-read_csv("emnist-digits-train.csv")%>%
 names(em)<-c("label",
              paste0("pix_",1:784))
 ```
-
-
 
 **Plotting The Data**
 
@@ -312,7 +312,7 @@ Unlike CPUs and GPUs, TPUs are designed to handle large-scale **matrix multiplic
 ### **Final Takeaways**
 
 | Feature | **CPU** | **GPU** | **TPU** |
-|-------------------|------------------|------------------|------------------|
+|------------------|------------------|------------------|------------------|
 | **Designed For** | General computing | Parallel processing (graphics, ML) | Deep learning workloads |
 | **Best At** | Sequential tasks | Neural network training | Large-scale tensor computations |
 | **Speed for ML** | Slow | Fast | Extremely fast (in specific cases) |
@@ -423,6 +423,37 @@ if(fit_nnet){
 
 ```
 
+### Softmax Function
+
+Below is an example of how the softmax function works. Picture we have 10 outputs, one 
+for each possible class. These will initially be in logit form. 
+
+```{r}
+
+# ── Softmax numeric example: EMNIST output layer (10 classes: digits 0–9) ──────
+
+# Raw logits from the final dense layer (one forward pass)
+logits <- c(-1.2, 0.4, 2.1, 0.8, -0.3, 1.5, 0.2, -0.9, 3.1, 0.6)
+names(logits) <- paste0("digit_", 0:9)
+
+# Step 1: Exponentiate 
+exp_logits <- exp(logits)
+
+#  Step 2: Normalise (divide by partition function Z) 
+softmax_probs <- exp_logits / sum(exp_logits)
+
+# Tidy summary table 
+results <- tibble(
+  digit       = 0:9,
+  logit       = logits,
+  exp_logit   = exp_logits,
+  probability = softmax_probs
+)
+
+```
+
+
+
 ### Cross Entropy
 
 We'll evaluate these models using mean log loss, also called cross entropy.
@@ -510,11 +541,47 @@ where $z_i$ is the raw output for class $i$.
 -   It works with **softmax output**, ensuring that predicted probabilities sum to 1.
 -   **Lower loss means the model is assigning higher probability to the correct class**.
 
+```{r}
+library(tidyverse)
+
+# ── Cross-entropy loss: 10 observations, EMNIST digit classes (0–9) ────────────
+
+# True labels (one per observation)
+true_labels <- c(3, 7, 0, 5, 2, 9, 1, 6, 4, 8)
+
+# Simulated softmax output: 10 obs × 10 class probabilities
+# Each row sums to 1 (as if from a softmax layer)
+raw <- matrix(runif(100), nrow = 10, ncol = 10)
+probs <- raw / rowSums(raw)   # row-normalise → valid probability distributions
+colnames(probs) <- paste0("digit_", 0:9)
+
+# ── Cross-entropy per observation: -log(p_true) ────────────────────────────────
+# Extract the predicted probability assigned to the correct class for each row
+p_true <- map2_dbl(
+  seq_len(nrow(probs)),
+  true_labels + 1L,          # +1: R is 1-indexed, digits are 0-indexed
+  \(row, col) probs[row, col]
+)
+
+cross_entropy <- -log(p_true)
+
+# ── Tidy summary ───────────────────────────────────────────────────────────────
+results <- tibble(
+  true_digit   = true_labels,
+  p_true       = round(p_true, 4),
+  cross_entropy = round(cross_entropy, 4)
+)
+
+results
+
+# ── Scalar loss (mean over batch) ─────────────────────────────────────────────
+cat("\nMean cross-entropy loss:", round(mean(cross_entropy), 4), "\n")
+```
+
 
 ```{r}
 autoplot(nnet_fit)
 ```
-
 
 ```{r}
 show_best(nnet_fit,metric="mn_log_loss")
@@ -544,6 +611,4 @@ final_res <- last_fit(final_nnet, split_data)
 collect_metrics(final_res)
 ```
 
-
 **Question: Is this accurate enough?**
-
