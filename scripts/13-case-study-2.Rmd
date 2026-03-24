@@ -28,6 +28,7 @@ In response to this case, your group should develop a predictive modeling approa
 
 1. **Operationalizing the Dependent Variable(s):**
    - How should enrollment be measured for prediction (e.g., total students per school, grade-specific breakdowns)?
+   
    - Should historical trends be weighted differently based on recent shifts?
    
 2. **Identifying Features for Prediction:**
