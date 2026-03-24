@@ -1,0 +1,453 @@
+---
+title: "Conformal Prediction Intervals"
+author: "Will Doyle"
+date: "2025-03-04"
+output: github_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(probably)   # conformal inference via tidymodels
+```
+
+---
+
+# Part 1: The Problem with Point Predictions
+
+Our XGBoost model from last class produces predicted *probabilities* — a single number like 0.73 for each student. That's useful, but it answers only half the question. What we really want to know is: **how confident should we be in that prediction?**
+
+The conventional answer is to report a confidence interval from the model's internal estimates. But for complex models like XGBoost — which make no parametric assumptions about the data-generating process — those intervals are not well-calibrated. They may be too narrow (overconfident) or too wide (useless), and there's no easy way to audit them.
+
+**Conformal prediction** offers a different answer. Instead of trusting the model's internal uncertainty, it uses *empirical evidence from held-out data* to construct intervals with a rigorous frequentist guarantee: the true outcome falls inside the interval at least $(1 - \alpha)$% of the time, regardless of the model's internal assumptions.
+
+This guarantee holds for **any** underlying model — a linear regression, a neural network, or our XGBoost classifier. The model is just a black box.
+
+---
+
+# Part 2: The Core Idea
+
+## What is a Conformal Score?
+
+The key object in conformal inference is a **nonconformity score** (or *conformity score*) — a number that measures how surprising a new observation is relative to the training data.
+
+For a regression problem, the score is simply the absolute residual:
+
+$$s_i = |y_i - \hat{y}_i|$$
+
+A large score means the model was badly wrong for that observation. A small score means it predicted well.
+
+For a classification problem (like ours), the natural score is:
+
+$$s_i = 1 - \hat{p}(y_i)$$
+
+where $\hat{p}(y_i)$ is the predicted probability assigned to the *true* class. If the model was confident and correct, $\hat{p}$ is close to 1 and $s_i$ is close to 0. If the model was wrong or uncertain, $s_i$ is large.
+
+## The Calibration Set
+
+The conformal guarantee comes from **calibration** — evaluating these scores on observations the model has never seen. The procedure is:
+
+1. Split data into training, calibration, and test sets.
+2. Fit the model on the training set.
+3. Compute nonconformity scores $s_1, \ldots, s_n$ on the calibration set.
+4. For a new test observation, find the score threshold $\hat{q}$ such that $(1 - \alpha)$ of calibration scores fall below it.
+5. Include all classes whose score would fall at or below $\hat{q}$ in the prediction *set*.
+
+The resulting prediction sets are guaranteed to contain the true label with at least $(1 - \alpha)$ probability — across any distribution, for any model.
+
+## Why Does This Work?
+
+Suppose you want 90% coverage ($\alpha = 0.10$). You find the 90th percentile of calibration scores, call it $\hat{q}$. For a new observation, the model produces class probabilities; you include a class $k$ in the prediction set if $1 - \hat{p}(k) \leq \hat{q}$, i.e., if the model assigns that class sufficient probability.
+
+The key insight is **exchangeability**: if the calibration observations and the new test observation were drawn from the same distribution, then the new observation's score is equally likely to land anywhere in the distribution of calibration scores. So the probability that its score exceeds the 90th percentile is at most 10% — guaranteeing at least 90% coverage.
+
+This is a finite-sample, distribution-free result. No normality. No parametric assumptions. It just requires that the data are exchangeable (roughly: i.i.d.).
+
+---
+
+# Part 3: Split Conformal Prediction
+
+The simplest implementation is **split conformal prediction** (also called *inductive conformal prediction*). It uses a single held-out calibration set to compute $\hat{q}$.
+
+The tradeoff: using some data for calibration instead of training slightly reduces model performance, but the coverage guarantee is exact and the method is extremely computationally cheap.
+
+## The Math
+
+Given calibration scores $s_1, \ldots, s_n$ and target coverage $1 - \alpha$:
+
+$$\hat{q} = \text{Quantile}\!\left(\{s_1, \ldots, s_n\},\ \frac{\lceil (n+1)(1-\alpha) \rceil}{n}\right)$$
+
+The $\frac{n+1}{n}$ correction accounts for the fact that we're estimating a quantile on a finite sample and need the coverage to hold for the new point too, not just the calibration set. As $n \to \infty$ the correction vanishes.
+
+---
+
+# Part 4: Implementing Conformal Prediction from Scratch
+
+Let's implement split conformal prediction by hand so the mechanics are transparent, then see how `probably` automates it.
+
+## Setup: Start with a Fitted Model
+
+We pick up exactly where the previous class ended: a finalized XGBoost workflow and a train/test split. We'll carve a calibration set out of the training data.
+
+```{r load_data}
+ou <- read_csv("oulad.csv") %>%
+  mutate(result = fct_relevel(as_factor(result), c("passed", "not_passed"))) %>%
+  select(-final_result)
+```
+
+```{r split_data}
+
+
+# Initial split: 60% train+calibration, 40% test
+ou_split <- initial_split(ou, prop = 0.6)
+ou_train_cal <- training(ou_split)
+ou_test      <- testing(ou_split)
+
+# Further split training into proper train (75%) and calibration (25%)
+cal_split <- initial_split(ou_train_cal, prop = 0.75)
+ou_train  <- training(cal_split)
+ou_cal    <- testing(cal_split)
+```
+
+```{r recipe}
+xgb_rec <- recipe(result ~ ., ou_train) %>%
+  update_role(id_student, new_role = "id") %>%
+  step_other(all_nominal_predictors(), threshold = 0.05) %>%
+  step_unknown(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors())
+```
+
+```{r model_spec}
+xgb_spec <- boost_tree(
+  trees        = 100,
+  tree_depth   = 4,
+  learn_rate   = 0.05,
+  sample_size  = 0.8,
+  mtry         = 5,
+  loss_reduction = 0.01
+) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+```
+
+```{r fit_model}
+fit_model <- FALSE
+
+if (fit_model) {
+  xgb_fit <- workflow() %>%
+    add_recipe(xgb_rec) %>%
+    add_model(xgb_spec) %>%
+    fit(ou_train)
+  save(xgb_fit, file = "xgb_fit_conformal.Rdata")
+} else {
+  load("xgb_fit_conformal.Rdata")
+}
+```
+
+## Step 1: Compute Calibration Scores
+
+```{r cal_scores}
+# Predict probabilities on the calibration set
+cal_preds <- augment(xgb_fit, ou_cal)
+
+# Nonconformity score: 1 - predicted probability of the *true* class
+cal_scores <- cal_preds %>%
+  mutate(
+    true_class_prob = if_else(result == "passed", .pred_passed, .pred_not_passed),
+    score           = 1 - true_class_prob
+  )
+
+cal_scores %>%
+  select(result, .pred_passed, .pred_not_passed, score) %>%
+  head(10)
+```
+
+## Step 2: Find the Quantile Threshold
+
+```{r quantile_threshold}
+alpha <- 0.10  # target: 90% coverage
+
+n <- nrow(cal_scores)
+
+# Finite-sample corrected quantile
+q_level <- ceiling((n + 1) * (1 - alpha)) / n
+q_level <- min(q_level, 1)  # cap at 1
+
+q_hat <- quantile(cal_scores$score, probs = q_level)
+
+cat("Calibration set size:", n, "\n")
+cat("Quantile level used:", round(q_level, 4), "\n")
+cat("Score threshold (q_hat):", round(q_hat, 4), "\n")
+```
+
+```{r score_distribution}
+ggplot(cal_scores, aes(x = score)) +
+  geom_histogram(bins = 40, fill = "steelblue", color = "white", alpha = 0.85) +
+  geom_vline(xintercept = q_hat, color = "firebrick", linewidth = 1.2, linetype = "dashed") +
+  annotate("text", x = q_hat + 0.02, y = Inf, vjust = 2,
+           label = paste0("q̂ = ", round(q_hat, 3)), color = "firebrick", size = 4) +
+  labs(
+    title    = "Distribution of calibration nonconformity scores",
+    subtitle = paste0("Scores above the dashed line exceed the ", round(1 - alpha, 2) * 100, "% threshold"),
+    x        = "Nonconformity score  (1 − predicted probability of true class)",
+    y        = "Count"
+  ) +
+  theme_minimal()
+```
+
+## Step 3: Construct Prediction Sets on the Test Data
+
+```{r test_pred_sets}
+test_preds <- augment(xgb_fit, ou_test)
+
+conformal_sets <- test_preds %>%
+  mutate(
+    # A class is included if its nonconformity score ≤ q_hat
+    include_passed     = (1 - .pred_passed)     <= q_hat,
+    include_not_passed = (1 - .pred_not_passed) <= q_hat,
+
+    # Encode the prediction set as a string for readability
+    pred_set = case_when(
+      include_passed & include_not_passed  ~ "{passed, not_passed}",
+      include_passed & !include_not_passed ~ "{passed}",
+      !include_passed & include_not_passed ~ "{not_passed}",
+      TRUE                                 ~ "{}"
+    )
+  )
+
+conformal_sets %>%
+  count(pred_set) %>%
+  mutate(pct = n / sum(n))
+```
+
+Three types of prediction sets emerge:
+
+- **Singleton sets** like `{passed}` — the model is confident enough that only one class clears the threshold.
+- **Both classes** `{passed, not_passed}` — the model is uncertain; both classes are plausible given the evidence.
+- **Empty set** `{}` — rare but possible; it signals that the model assigns anomalously low probability to every class, flagging an unusual observation.
+
+## Step 4: Verify Empirical Coverage
+
+```{r verify_coverage}
+coverage_check <- conformal_sets %>%
+  mutate(
+    covered = case_when(
+      result == "passed"     & include_passed     ~ TRUE,
+      result == "not_passed" & include_not_passed ~ TRUE,
+      TRUE                                        ~ FALSE
+    )
+  )
+
+coverage_check %>%
+  summarise(
+    empirical_coverage = mean(covered),
+    target_coverage    = 1 - alpha,
+    n_test             = n()
+  )
+```
+
+Empirical coverage should meet or exceed 90%. Any shortfall is just sampling noise — the theoretical guarantee is asymptotic and exact at $n \to \infty$.
+
+---
+
+# Part 5: Using the `probably` Package
+
+The `probably` package (part of tidymodels) implements conformal prediction natively, handling the bookkeeping and integrating cleanly with workflows.
+
+## `int_conformal_split()`
+
+```{r probably_setup}
+# probably requires a fitted workflow, not just a parsnip model
+conformal_obj <- int_conformal_split(
+  object   = xgb_fit,    # fitted workflow
+  cal_data = ou_cal      # calibration set
+)
+
+conformal_obj
+```
+
+```{r probably_predict}
+# Predict on the test set — returns prediction sets
+test_conformal <- predict(conformal_obj, ou_test, level = 1 - alpha)
+
+test_conformal %>%
+  count(.pred_class) %>%
+  mutate(pct = n / sum(n))
+```
+
+```{r probably_coverage}
+# Join predictions back to test labels and check coverage
+test_conformal %>%
+  bind_cols(ou_test %>% select(result)) %>%
+  mutate(covered = map2_lgl(
+    .pred_class, result,
+    ~ str_detect(.x, as.character(.y))
+  )) %>%
+  summarise(empirical_coverage = mean(covered))
+```
+
+---
+
+# Part 6: Visualizing Uncertainty
+
+Conformal prediction sets communicate *qualitatively different* uncertainty than a single probability. Let's visualize what the prediction sets reveal.
+
+## Prediction Set Size by True Outcome
+
+```{r set_size_viz}
+conformal_sets %>%
+  mutate(
+    set_size = include_passed + include_not_passed
+  ) %>%
+  group_by(result, set_size) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(pct = n / sum(n), .by = result) %>%
+  ggplot(aes(x = factor(set_size), y = pct, fill = result)) +
+  geom_col(position = "dodge", alpha = 0.85) +
+  scale_fill_manual(values = c("steelblue", "firebrick")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title    = "Prediction set size by true outcome",
+    subtitle = "Size 1 = confident prediction; size 2 = uncertain; size 0 = anomaly",
+    x        = "Prediction set size",
+    y        = "Proportion of observations",
+    fill     = "True outcome"
+  ) +
+  theme_minimal()
+```
+
+## Confidence vs. Uncertainty Across the Score Distribution
+
+```{r uncertainty_viz}
+conformal_sets %>%
+  mutate(
+    margin     = abs(.pred_passed - .pred_not_passed),
+    set_type   = case_when(
+      include_passed & include_not_passed  ~ "Uncertain (both classes)",
+      !include_passed & !include_not_passed ~ "Anomaly (empty set)",
+      TRUE                                 ~ "Confident (singleton)"
+    )
+  ) %>%
+  ggplot(aes(x = margin, fill = set_type)) +
+  geom_histogram(bins = 40, color = "white", alpha = 0.85) +
+  scale_fill_manual(values = c("grey50", "firebrick", "steelblue")) +
+  labs(
+    title    = "Prediction margin by conformal set type",
+    subtitle = paste0("q̂ = ", round(q_hat, 3), "  |  ", round((1 - alpha) * 100), "% target coverage"),
+    x        = "| P(passed) − P(not_passed) |",
+    y        = "Count",
+    fill     = "Prediction set"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+Observations near the decision boundary (small margin) are correctly flagged as uncertain — their prediction set includes both classes. High-margin predictions yield confident singletons.
+
+---
+
+# Part 7: Varying the Coverage Level
+
+The threshold $\hat{q}$ scales monotonically with the target coverage. Higher coverage → more observations get both-class sets; lower coverage → more singletons but weaker guarantee. This tradeoff is explicit and controllable.
+
+```{r coverage_tradeoff}
+alpha_grid <- tibble(alpha = seq(0.05, 0.40, by = 0.05)) %>%
+  mutate(
+    q_hat = map_dbl(alpha, function(a) {
+      ql <- min(ceiling((n + 1) * (1 - a)) / n, 1)
+      quantile(cal_scores$score, probs = ql)
+    }),
+    test_results = map(q_hat, function(q) {
+      test_preds %>%
+        mutate(
+          include_passed     = (1 - .pred_passed)     <= q,
+          include_not_passed = (1 - .pred_not_passed) <= q,
+          covered = case_when(
+            result == "passed"     & include_passed     ~ TRUE,
+            result == "not_passed" & include_not_passed ~ TRUE,
+            TRUE                                        ~ FALSE
+          ),
+          set_size = include_passed + include_not_passed
+        ) %>%
+        summarise(
+          empirical_coverage   = mean(covered),
+          pct_singleton        = mean(set_size == 1),
+          pct_both             = mean(set_size == 2),
+          pct_empty            = mean(set_size == 0)
+        )
+    })
+  ) %>%
+  unnest(test_results)
+
+alpha_grid %>%
+  select(alpha, target = alpha, empirical_coverage, pct_singleton, pct_both) %>%
+  mutate(target_coverage = 1 - alpha) %>%
+  pivot_longer(c(empirical_coverage, pct_singleton, pct_both),
+               names_to = "metric", values_to = "value") %>%
+  ggplot(aes(x = target_coverage, y = value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(
+    values = c("empirical_coverage" = "steelblue",
+               "pct_singleton"      = "forestgreen",
+               "pct_both"           = "firebrick"),
+    labels = c("Empirical coverage", "% singleton sets", "% both-class sets")
+  ) +
+  labs(
+    title    = "Coverage–efficiency tradeoff across α levels",
+    subtitle = "Higher coverage demands force more both-class (uncertain) prediction sets",
+    x        = "Target coverage (1 − α)",
+    y        = "Proportion",
+    color    = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Part 8: Cross-Conformal Prediction (Optional Extension)
+
+Split conformal prediction wastes some training data on calibration. **Cross-conformal prediction** (also called *CV+*) uses $k$-fold cross-validation to compute calibration scores without a separate holdout: each fold serves as the calibration set when the model is trained on the remaining folds.
+
+The coverage guarantee remains valid (under mild additional conditions). The tradeoff is computational: you must fit $k$ models instead of one.
+
+`probably` implements this via `int_conformal_cv()`:
+
+```{r cv_conformal, eval=FALSE}
+# Requires a tune::resample_results or workflow + resamples
+cv_folds <- vfold_cv(ou_train, v = 10)
+
+# Fit with cross-validation
+cv_fit <- workflow() %>%
+  add_recipe(xgb_rec) %>%
+  add_model(xgb_spec) %>%
+  fit_resamples(cv_folds, control = control_resamples(save_pred = TRUE))
+
+conformal_cv <- int_conformal_cv(cv_fit)
+
+predict(conformal_cv, ou_test, level = 0.90) %>%
+  bind_cols(ou_test %>% select(result)) %>%
+  mutate(covered = map2_lgl(.pred_class, result, ~ str_detect(.x, as.character(.y)))) %>%
+  summarise(empirical_coverage = mean(covered))
+```
+
+---
+
+# Summary
+
+| Property | Conformal Prediction | Standard Model Intervals |
+|---|---|---|
+| Coverage guarantee | Exact (finite-sample) | Asymptotic / model-dependent |
+| Distributional assumptions | Exchangeability only | Usually parametric |
+| Works for any model | Yes | No |
+| Output | Prediction *sets* | Single interval |
+| Calibration data needed | Yes | No |
+| Computationally cheap | Yes (split) / Moderate (CV+) | Yes |
+
+Conformal prediction reframes uncertainty quantification as an empirical question: *how wrong has this model been on similar data before?* The answer — encoded in the nonconformity scores — translates directly into prediction sets with an honest, auditable coverage guarantee. For high-stakes predictions (student success interventions, medical screening, admissions decisions), that guarantee is the difference between principled uncertainty and false precision.
