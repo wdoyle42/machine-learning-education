@@ -139,7 +139,7 @@ The result is a properly oriented grayscale rendering of the EMNIST digit.
 Try this with at least five different digits!
 
 ```{r}
-em%>%slice(689)%>%
+em%>%slice(111)%>%
   plot_emnist_digit()
 ```
 
@@ -376,13 +376,6 @@ mlp_grid <- mlp_grid %>%
     TRUE ~ epochs  # Keeps other values unchanged
   ))
 
-mlp_grid<-grid_regular(extract_parameter_set_dials(nnet_model),levels =2)
-mlp_grid <- mlp_grid %>%
-  mutate(epochs = case_when(
-    epochs == 5 ~ 10,
-    epochs == 500 ~ 100,
-    TRUE ~ epochs
-  ))
 
 
 ```
@@ -425,8 +418,9 @@ if(fit_nnet){
 
 ### Softmax Function
 
-Below is an example of how the softmax function works. Picture we have 10 outputs, one 
-for each possible class. These will initially be in logit form. 
+Below is an example of how the softmax function works.
+Picture we have 10 outputs, one for each possible class.
+These will initially be in logit form.
 
 ```{r}
 
@@ -451,8 +445,6 @@ results <- tibble(
 )
 
 ```
-
-
 
 ### Cross Entropy
 
@@ -577,7 +569,6 @@ results
 # ── Scalar loss (mean over batch) ─────────────────────────────────────────────
 cat("\nMean cross-entropy loss:", round(mean(cross_entropy), 4), "\n")
 ```
-
 
 ```{r}
 autoplot(nnet_fit)

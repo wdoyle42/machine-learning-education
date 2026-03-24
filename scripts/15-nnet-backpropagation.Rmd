@@ -4,86 +4,91 @@ author: "Will Doyle"
 date: "2025-03-25"
 output: html_document
 ---
+
 ## Backpropagation
 
-In this lesson, we'll work through a simulated example to show how backpropagation works. This is somewhat abstracted away from the actual way neural nets function, but close enough to give you a good picture of what's going on.
+In this lesson, we'll work through a simulated example to show how backpropagation works. This is somewhat abstracted from the actual way neural nets function, but close enough to give you a good picture of what's going on.
 
-The function below, `generate_synthetic_data`, creates a synthetic dataset for a multi-class classification problem. It allows the user to specify the number of samples (`n_samples`), the dimensionality of each input vector (`input_dim`), the number of classes (`n_classes`), and the standard deviation of "noise" (`noise_sd`). First, it generates a set of random centroids—one for each class—serving as the mean vectors for the input features. Then, for each sample, it randomly selects a class, retrieves the corresponding centroid, and adds Gaussian noise to generate an input vector centered around that class's centroid. The function stores each input in matrix X and encodes the class labels in a one-hot format in matrix Y. Finally, it returns a list containing X (the feature matrix) and Y (the one-hot encoded label matrix).
-
-
-```{r}
+```{r setup, message=FALSE, warning=FALSE}
 library(tidyverse)
+```
 
-generate_synthetic_data <- function(n_samples = 1000, 
-                                    input_dim = 10, 
-                                    n_classes = 5, 
+---
+
+## Synthetic Data
+
+The function below, `generate_synthetic_data`, creates a synthetic dataset for a multi-class classification problem. It allows the user to specify the number of samples (`n_samples`), the dimensionality of each input vector (`input_dim`), the number of classes (`n_classes`), and the standard deviation of noise (`noise_sd`). It generates random centroids — one per class — then for each sample selects a class and adds Gaussian noise around that class's centroid. Inputs are stored in matrix `X` and labels are one-hot encoded in matrix `Y`.
+
+```{r generate-data}
+generate_synthetic_data <- function(n_samples = 1000,
+                                    input_dim = 10,
+                                    n_classes = 5,
                                     noise_sd = 0.1) {
+  centroids <- matrix(
+    rnorm(n_classes * input_dim, mean = 0, sd = 1),
+    nrow = n_classes, ncol = input_dim
+  )
 
-  
-  # Step 1: Create class centroids (each is a 784-dim mean vector)
-  centroids <- matrix(rnorm(n_classes * input_dim, mean = 0, sd = 1), 
-                      nrow = n_classes, ncol = input_dim)
-  
-  # Storage for generated data
-  X <- matrix(0, nrow = n_samples, ncol = input_dim)
-  Y <- matrix(0, nrow = n_samples, ncol = n_classes)  # one-hot encoded
-  
-  for (i in 1:n_samples) {
-    class <- sample(0:(n_classes - 1), 1)  # Random class label 0–9
-    centroid <- centroids[class + 1, ]    # Get corresponding centroid
-    
-    # Generate input vector: add noise around centroid
-    x_i <- centroid + rnorm(input_dim, mean = 0, sd = noise_sd)
-    
-    # Store input and one-hot label
-    X[i, ] <- x_i
-    Y[i, class + 1] <- 1
-  }
-  
+  class_ids <- sample(0:(n_classes - 1), n_samples, replace = TRUE)
+
+  X <- centroids[class_ids + 1, ] +
+    matrix(rnorm(n_samples * input_dim, 0, noise_sd), n_samples, input_dim)
+
+  Y <- matrix(0, nrow = n_samples, ncol = n_classes)
+  Y[cbind(seq_len(n_samples), class_ids + 1)] <- 1
+
   list(X = X, Y = Y)
 }
 ```
 
-```{r}
-k<-784
+```{r set-dims}
+k <- 784   # input dimension
+n <- 1000  # samples
+j <- 10    # classes
 
-n<-1000
-
-j<-10
-
-synth<-generate_synthetic_data(n_samples=n,
-                        input_dim=k,
-                        n_classes=j,
-                        noise_sd = .5)
-
-```
-
-```{r}
+set.seed(42)
+synth <- generate_synthetic_data(
+  n_samples  = n,
+  input_dim  = k,
+  n_classes  = j,
+  noise_sd   = 0.5
+)
 
 X <- synth$X
 Y <- synth$Y
+```
 
+---
+
+## Visualization 1: PCA of Input Space
+
+Before training anything, it helps to see whether the synthetic classes are separable in the input space. We project onto principal components 3 and 4 to illustrate that classes form loose clusters.
+
+```{r pca-plot}
 labels <- apply(Y, 1, function(row) which(row == 1) - 1)
 
-# Run PCA
-pca_result <- prcomp(X, center = TRUE, scale. = TRUE)
-pca_df <- as.data.frame(pca_result$x[, 3:4])  # Get first 2 principal components
-colnames(pca_df) <- c("PC3", "PC4")
-pca_df$class <- as.factor(labels)
-
-# Scatter plot using ggplot2
-ggplot(pca_df, aes(x = PC3, y = PC4, color = class)) +
-  geom_point(alpha = 0.8, size = 2) +
+prcomp(X, center = TRUE, scale. = TRUE)$x[, 3:4] %>%
+  as_tibble(.name_repair = "minimal") %>%
+  set_names(c("PC3", "PC4")) %>%
+  mutate(class = as.factor(labels)) %>%
+  ggplot(aes(x = PC3, y = PC4, color = class)) +
+  geom_point(alpha = 0.6, size = 1.5) +
   labs(
-       x = "Principal Component 3",
-       y = "Principal Component 4",
-       color = "Class") +
+    title = "PCA projection of synthetic input data",
+    x = "Principal Component 3",
+    y = "Principal Component 4",
+    color = "Class"
+  ) +
   theme_minimal()
 ```
 
+---
 
-The `initialize_network` function below sets up a simple two-layer neural network by randomly initializing its weights and biases. This is handled by torch/pytorch internally.   It takes three arguments: `input_dim` (number of input features), `hidden_dim` (number of neurons in the hidden layer), and `output_dim` (number of output classes or units). The function returns a list containing four components: `W1`, a weight matrix connecting the input layer to the hidden layer; `b1`, a bias vector for the hidden layer; `W2`, a weight matrix connecting the hidden layer to the output layer; and `b2`, a bias vector for the output layer. The weights are initialized with small random values uniformly drawn from the interval [-0.1, 0.1], while the biases are initialized to zero. The final line assigns this initialized network to the variable network.
-```{r}
+## Network Initialization
+
+The `initialize_network` function sets up a two-layer neural network by randomly initializing weights and biases. Weights are drawn uniformly from [-0.1, 0.1]; biases start at zero.
+
+```{r initialize}
 initialize_network <- function(input_dim = k, hidden_dim = 5, output_dim = j) {
   list(
     W1 = matrix(runif(hidden_dim * input_dim, -0.1, 0.1), nrow = hidden_dim),
@@ -92,144 +97,256 @@ initialize_network <- function(input_dim = k, hidden_dim = 5, output_dim = j) {
     b2 = rep(0, output_dim)
   )
 }
-network<-initialize_network()
+
+network_init <- initialize_network()
 ```
 
-```{r}
+---
 
-backprop_step <- function(X, Y, network, lr = 0.1) {
-  # INPUTS:
-  # x: input vector (numeric vector of length 784 for a 28x28 image)
-  # y: one-hot encoded label vector (length 10; e.g., class 3 → c(0,0,1,0,...,0))
-  # network: list of current weights and biases
-  #   - W1: weight matrix (5 x 784), connects input to hidden layer
-  #   - b1: bias vector (5 x 1), for hidden layer
-  #   - W2: weight matrix (10 x 5), connects hidden layer to output layer
-  #   - b2: bias vector (10 x 1), for output layer
-  # lr: learning rate (scalar, step size for updating weights)
+## Forward and Backward Pass
 
-  n_samples<-nrow(X)
-  
-  # --- UNPACK WEIGHTS ---
-  W1 <- network$W1  # (5 x 784)
-  b1 <- network$b1  # (5 x 1)
-  W2 <- network$W2  # (10 x 5)
-  b2 <- network$b2  # (10 x 1)
+The `backprop_step` function performs one full forward pass, computes cross-entropy loss, runs backpropagation to compute gradients, and returns updated weights.
 
-  # --- FORWARD PASS ---
-
-  # Step 1: Compute hidden layer linear combination
-  Z1 <- X %*% t(W1) +matrix(rep(b1, each = n_samples), nrow = n_samples)
-
-  
-  # Step 2: Apply ReLU activation to hidden layer
-  A1 <- pmax(0, Z1)    # a1: (5 x 1) = activated output from hidden layer
-
-  A1<-matrix(A1,n_samples,5)
-  
-  # Step 3: Compute output layer linear combination
-  Z2 <- A1 %*% t(W2) + matrix(rep(b2, each = n_samples), nrow = n_samples)
-
-  # Step 5: Softmax to turn output into probabilities
+```{r backprop-function}
 softmax <- function(z) {
-  exp_z <- exp(z - apply(z, 1, max))  # subtract row-wise max for stability
+  exp_z <- exp(z - apply(z, 1, max))
   exp_z / rowSums(exp_z)
 }
 
-  Y_hat <- softmax(Z2)  # Predicted probabilities for 10 classes
+backprop_step <- function(X, Y, network, lr = 0.1) {
+  n_samples <- nrow(X)
 
-  # Step 6: Compute cross-entropy loss
-  # Loss is a scalar: -log(probability of correct class)
-  loss <- -sum(Y * log(Y_hat))  # scalar loss
+  W1 <- network$W1
+  b1 <- network$b1
+  W2 <- network$W2
+  b2 <- network$b2
 
-  # --- BACKWARD PASS (Backpropagation) ---
+  # --- FORWARD PASS ---
+  Z1 <- X %*% t(W1) + matrix(rep(b1, each = n_samples), nrow = n_samples)
+  A1 <- pmax(0, Z1)
+  A1 <- matrix(A1, n_samples, nrow(W1))
 
-  # Step 7: Derivative of loss w.r.t. a2 (after softmax)
-  dZ2 <- (Y_hat - Y)/n_samples         # (10 x 1): error at output layer
+  Z2    <- A1 %*% t(W2) + matrix(rep(b2, each = n_samples), nrow = n_samples)
+  Y_hat <- softmax(Z2)
+  loss  <- -sum(Y * log(Y_hat + 1e-12))
 
-  
-  # Gradients for W2 and b2
-  dW2 <- t(dZ2) %*% A1            # (10 x 5)
-  db2 <- colSums(dZ2)             # (10)
-  
-  # Step 9: Backpropagate error to hidden layer
-  dA1 <- dZ2%*% W2      # (5 x 1): error signal passed backward
-  dZ1<-dA1
-  # Step 10: ReLU derivative (zero out where z1 was ≤ 0)
-  dZ1[Z1 <= 0] <- 0  
+  # --- BACKWARD PASS ---
+  dZ2 <- (Y_hat - Y) / n_samples
+  dW2 <- t(dZ2) %*% A1
+  db2 <- colSums(dZ2)
 
-  # Step 11: Gradients for W1 and b1
-  dW1 <- t(dZ1) %*% X      # (5 x 784): outer product of dz1 and input x
-  db1 <- colSums(dZ1)              # (5 x 1): bias gradient is just the error
+  dA1       <- dZ2 %*% W2
+  dZ1       <- dA1
+  dZ1[Z1 <= 0] <- 0
 
-  # --- UPDATE WEIGHTS USING GRADIENT DESCENT ---
+  dW1 <- t(dZ1) %*% X
+  db1 <- colSums(dZ1)
 
-  # Adjust weights and biases in direction that reduces loss
-  W1 <- W1 - (lr * dW1)      # (5 x 784): input-to-hidden weights
-  b1 <- b1 - (lr * db1)      # (5 x 1): hidden biases
-  W2 <- W2 - (lr * dW2)      # (10 x 5): hidden-to-output weights
-  b2 <- b2 - (lr * db2)      # (10 x 1): output biases
-
-  # --- RETURN UPDATED MODEL STATE ---
   list(
     network = list(
-      W1 = W1,
-      b1 = b1,
-      W2 = W2,
-      b2 = b2
+      W1 = W1 - lr * dW1,
+      b1 = b1 - lr * db1,
+      W2 = W2 - lr * dW2,
+      b2 = b2 - lr * db2
     ),
-    prediction = Y_hat,    # softmax probabilities (10 x 1)
-    loss = loss            # scalar loss value
+    prediction = Y_hat,
+    loss       = loss,
+    dW1_norm   = norm(dW1, "F"),
+    dW2_norm   = norm(dW2, "F")
   )
 }
-
 ```
 
+---
 
-## First Run
-```{r}
-updated<-backprop_step(X=synth$X,Y=synth$Y,network=network)
+## Training Loop
+
+We run 1,000 iterations using `accumulate()` from purrr, which threads the network state forward at each step and retains the full history.
+
+```{r train}
+training_history <- accumulate(
+  1:1000,
+  function(state, i) backprop_step(X, Y, state$network, lr = 0.5),
+  .init = list(network = network_init, loss = NA, dW1_norm = NA, dW2_norm = NA)
+)
+
+# Extract scalar history into a tidy data frame (drop .init step at index 1)
+history_df <- training_history[-1] %>%
+  map_dfr(~ tibble(loss = .x$loss,
+                   dW1_norm = .x$dW1_norm,
+                   dW2_norm = .x$dW2_norm)) %>%
+  mutate(iteration = row_number())
+
+# Trained network is the final state
+network_trained <- training_history[[1001]]$network
 ```
 
-```{r}
-updated$loss
+---
+
+## Visualization 2: Loss Curve
+
+The loss should decrease monotonically (given a suitable learning rate). The dashed line marks the iteration with the steepest single-step drop — the moment of fastest learning.
+
+```{r viz-loss}
+steepest <- history_df %>%
+  mutate(loss_drop = loss - lag(loss)) %>%
+  slice_min(loss_drop, n = 1) %>%
+  pull(iteration)
+
+history_df %>%
+  ggplot(aes(x = iteration, y = loss)) +
+  geom_line(color = "steelblue", linewidth = 0.8) +
+  geom_vline(xintercept = steepest, linetype = "dashed", color = "firebrick") +
+  annotate("text",
+           x     = steepest + 25,
+           y     = max(history_df$loss) * 0.92,
+           label = "Steepest\ndescent",
+           color = "firebrick", size = 3.5, hjust = 0) +
+  labs(
+    title = "Cross-entropy loss over training iterations",
+    x     = "Iteration",
+    y     = "Loss"
+  ) +
+  theme_minimal()
 ```
 
-## Next Run
-```{r}
-updated<-backprop_step(X=synth$X,Y=synth$Y,network=updated$network)
+---
+
+## Visualization 3: Gradient Magnitude by Layer
+
+Backpropagation pushes gradient signals backward from the output layer toward the input layer. Here we track the  norm of each layer's gradient at every iteration. If gradients in W1 (closer to the input) are consistently smaller than those in W2, that foreshadows the **vanishing gradient** problem common in deeper networks.
+
+```{r viz-gradients}
+history_df %>%
+  pivot_longer(c(dW1_norm, dW2_norm),
+               names_to  = "layer",
+               values_to = "grad_norm") %>%
+  mutate(layer = recode(layer,
+                        dW1_norm = "W1 (input → hidden)",
+                        dW2_norm = "W2 (hidden → output)")) %>%
+  ggplot(aes(x = iteration, y = grad_norm, color = layer)) +
+  geom_line(linewidth = 0.8) +
+  scale_color_manual(values = c(
+    "W1 (input → hidden)"    = "steelblue",
+    "W2 (hidden → output)"   = "firebrick"
+  )) +
+  labs(
+    title = "Gradient magnitude by layer over training",
+    x     = "Iteration",
+    y     = "Norm of weight update",
+    color = "Layer"
+  ) +
+  theme_minimal()
 ```
 
-```{r}
-updated$loss
-```
+---
 
+## Visualization 4: W2 Weight Heatmap — Before vs. After Training
 
-```{r}
+Backpropagation doesn't update weights randomly — it nudges them in directions that reduce loss. The W2 matrix (hidden → output, 10 × 5) is small enough to visualize directly. Compare the random noise of initialization to the structured pattern that emerges after training.
 
-# Placeholder for loss tracking
-loss_history <- numeric(100)
-
-# Run for 100 iterations
-for (i in 1:1000) {
-  updated <- backprop_step(X = synth$X, Y = synth$Y, network = network, lr = 0.5)
-  network <- updated$network  # update network in place
-  loss_history[i] <- updated$loss
-  
-  if (i %% 10 == 0) {
-    cat(sprintf("Iteration %d - Loss: %.4f\n", i, updated$loss))
-  }
+```{r viz-w2-heatmap}
+tidy_W2 <- function(net, label) {
+  net$W2 %>%
+    as_tibble(.name_repair = "minimal") %>%
+    set_names(str_c("hidden_", seq_len(ncol(.)))) %>%
+    mutate(output_class = row_number(), phase = label) %>%
+    pivot_longer(-c(output_class, phase),
+                 names_to  = "hidden_unit",
+                 values_to = "weight")
 }
+
+bind_rows(
+  tidy_W2(network_init,    "Before training"),
+  tidy_W2(network_trained, "After training")
+) %>%
+  mutate(phase = fct_inorder(phase)) %>%
+  ggplot(aes(x = hidden_unit, y = factor(output_class), fill = weight)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "steelblue", mid = "white", high = "firebrick",
+                       midpoint = 0) +
+  facet_wrap(~phase) +
+  labs(
+    title = "W2 weights: before vs. after training",
+    x     = "Hidden unit",
+    y     = "Output class",
+    fill  = "Weight"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+---
 
-```{r}
-loss_history<-data.frame(loss_history,x=1:1000)
+## Visualization 5: Softmax Output — One Sample, Before vs. After Training
+
+The forward pass ends with a softmax layer that converts raw scores into a probability distribution over classes. Before training, probability is spread roughly uniformly. After training, it should concentrate on the correct class.
+
+```{r viz-softmax}
+forward_probs <- function(net, x) {
+  z1 <- net$W1 %*% x + net$b1
+  a1 <- pmax(0, z1)
+  z2 <- net$W2 %*% a1 + net$b2
+  ez <- exp(z2 - max(z2))
+  as.vector(ez / sum(ez))
+}
+
+sample_idx <- 1
+x_sample   <- synth$X[sample_idx, ]
+true_class  <- which(synth$Y[sample_idx, ] == 1)
+
+bind_rows(
+  tibble(class = 1:j,
+         prob  = forward_probs(network_init, x_sample),
+         phase = "Before training"),
+  tibble(class = 1:j,
+         prob  = forward_probs(network_trained, x_sample),
+         phase = "After training")
+) %>%
+  mutate(
+    phase   = fct_inorder(phase),
+    correct = class == true_class
+  ) %>%
+  ggplot(aes(x = factor(class), y = prob, fill = correct)) +
+  geom_col() +
+  scale_fill_manual(values = c("FALSE" = "grey75", "TRUE" = "firebrick"),
+                    labels  = c("Other class", "True class")) +
+  facet_wrap(~phase) +
+  labs(
+    title    = "Softmax output for one sample: before vs. after training",
+    subtitle = paste("True class:", true_class),
+    x        = "Class",
+    y        = "Predicted probability",
+    fill     = NULL
+  ) +
+  theme_minimal()
 ```
 
-```{r}
-loss_history%>%
-  ggplot(aes(x=x,y=loss_history))+
-  geom_line()
-```
+---
 
+## Visualization 6: ReLU Activation Sparsity
+
+The ReLU activation function outputs zero whenever its input is negative, effectively "silencing" that hidden unit for a given sample. Here we look at the fraction of hidden units that are silent (= 0) for each sample after training, broken out by true class. High sparsity means most neurons are inactive — which can be either a sign of efficient coding or a warning of dead neurons.
+
+```{r viz-relu-sparsity}
+relu_sparsity <- function(net, X) {
+  Z1 <- X %*% t(net$W1) +
+    matrix(rep(net$b1, each = nrow(X)), nrow = nrow(X))
+  A1 <- pmax(Z1,0)
+  rowMeans(A1 == 0)
+}
+
+tibble(
+  sparsity = relu_sparsity(network_trained, synth$X),
+  class    = factor(apply(synth$Y, 1, which.max))
+) %>%
+  ggplot(aes(x = sparsity, fill = class)) +
+  geom_histogram(bins = 10, position = "identity", alpha = 0.5) +
+  labs(
+    title = "ReLU sparsity in the hidden layer after training",
+    x     = "Fraction of hidden units = 0 (silenced by ReLU)",
+    y     = "Count",
+    fill  = "True class"
+  ) +
+  theme_minimal()
+```

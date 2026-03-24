@@ -1,0 +1,57 @@
+---
+title: "1st Half Review"
+author: "Will Doyle"
+date: "2026-03-05"
+output: github_document
+---
+
+
+1. Machinbe Learning Workflow 
+    Training/Testing
+    Hyperparameters to be tuned
+    Tune via cross validation
+    Selecting Best Fit Parameters
+    Fit the best Fit Model to the Full Tranining Dataset
+    Use fitted model for predictions in testing dataset
+    In the end: deployable model
+    
+    What we didn't do: working with, maintaing and improving deployed         models
+    
+2.  Different Approaches To Searching for Hyperparameters
+    Regular Grid Search
+    Space Filling Approach Latin Hypercube
+    Systematic approaches
+      Simulated annealling
+      Bayesian search 
+  
+3. Elastic Net
+   Hyperparametrs: penalty mixture 
+   Continuous, Binary, Ordinal/Multinomial
+   <10000 units
+   Good for interpretability
+   
+4. SVM 
+    Choice of kernel: linear, polynomial rbf
+    RBF: Cost, Sigma 
+    <10,000 units
+    Really good when non-linear relationship with outcome
+    
+5. Trees and Forests
+    HP: number of trees; number of variables to include; the depth of each tree, minmium node size, cost complexity parameter
+    Better for large datasets
+    Complex patterns of missing datasets
+    Non-linearity
+    
+  6. Xgboost
+  HP: Number of trees; min node size ; learning rate; sample size; number fo features to try in each try; gamma= penalty for regularization; tree depth
+  VIP: gain, coverage,  
+  Really data hungry: 10,000 units or more
+  Low on interpretability: 
+  VIp: Gain, cover and frequency
+  
+  
+  
+  
+  
+   
+      

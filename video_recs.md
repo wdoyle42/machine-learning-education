@@ -41,6 +41,15 @@ ROC and AUC, clearly explained
 https://www.youtube.com/watch?v=4jRBRDbJemM&t=469s
 
 
+*15-neural-nets*
+
+But what is a neural net?
+https://www.youtube.com/watch?v=aircAruvnKk&t=760s
+
+Statquest, naturally . . .
+
+https://youtu.be/zxagGtF9MeU?si=MwIU62-MlpecHdlw
+
 
 
 
