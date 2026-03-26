@@ -15,7 +15,7 @@ We saw that a network can learn to fit training data very well.
 The problem is that fitting the training data well does not automatically mean the network will generalize to new data.
 This lecture focuses on **regularization** — a family of techniques designed specifically to reduce the gap between training performance and test performance.
 
----
+------------------------------------------------------------------------
 
 ## Why Regularization?
 
@@ -23,11 +23,10 @@ Neural networks are universal function approximators.
 Given enough capacity (layers, hidden units), they can memorize any training set perfectly.
 Memorization is not learning: a network that has memorized the EMNIST training digits will predict the exact pixels it saw, but stumble when a new person's handwriting looks slightly different from any training example.
 
-
 Two of the most commonly used and best-understood regularization techniques are:
 
-- **Dropout**: randomly silences neurons during training, preventing any single pathway from becoming over-specialized.
-- **L2 weight regularization** (also called weight decay): adds a penalty to the loss proportional to the squared magnitude of the weights, discouraging any weight from growing very large.
+-   **Dropout**: randomly silences neurons during training, preventing any single pathway from becoming over-specialized.
+-   **L2 weight regularization** (also called weight decay): adds a penalty to the loss proportional to the squared magnitude of the weights, discouraging any weight from growing very large.
 
 Both are available through the `brulee` engine in tidymodels.
 
@@ -38,15 +37,15 @@ library(brulee)
 library(janitor)
 ```
 
----
+------------------------------------------------------------------------
 
 ## The Bias–Variance Tradeoff, Revisited
 
 Before we reach for regularization tools, it helps to restate the core tradeoff.
 Every model makes predictions that are wrong for two fundamentally different reasons:
 
-- **Bias**: the model is too simple to capture the true pattern. It is systematically wrong in the same direction regardless of which training sample it sees.
-- **Variance**: the model is so sensitive to the particular training sample that small changes in the data lead to large changes in predictions. It is correct on average but wildly unstable.
+-   **Bias**: the model is too simple to capture the true pattern. It is systematically wrong in the same direction regardless of which training sample it sees.
+-   **Variance**: the model is so sensitive to the particular training sample that small changes in the data lead to large changes in predictions. It is correct on average but wildly unstable.
 
 A deep, wide neural network with no regularization sits at the high-variance end of the spectrum.
 Adding regularization moves it toward the middle, trading a small amount of bias for a large reduction in variance.
@@ -92,7 +91,7 @@ tibble(
   theme(legend.position = "bottom")
 ```
 
----
+------------------------------------------------------------------------
 
 ## Dropout
 
@@ -110,8 +109,8 @@ If neuron A learns that "a bright pixel in position 312 combined with a dark pix
 Other neurons learn to co-depend on A.
 The network builds brittle, highly specific circuits.
 
-Dropout breaks this kind of brittle arrangement.Because any neuron might be silenced on any given forward pass, every neuron has to learn features that are useful on their own. The network is forced to develop redundant, overlapping representations — which happen to be far more robust to the variation in new handwriting samples.
-
+Dropout breaks this kind of brittle arrangement.Because any neuron might be silenced on any given forward pass, every neuron has to learn features that are useful on their own.
+The network is forced to develop redundant, overlapping representations — which happen to be far more robust to the variation in new handwriting samples.
 
 ### Dropout as an Ensemble
 
@@ -176,7 +175,7 @@ bind_rows(
 Notice that the two forward passes silence different units, and the surviving activations are scaled up.
 From the network's perspective, it is never trained on exactly the same sub-architecture twice, which is the source of its regularizing power.
 
----
+------------------------------------------------------------------------
 
 ## L2 Weight Regularization
 
@@ -207,63 +206,19 @@ L2 regularization enforces a preference for **small, distributed weights**.
 Instead of routing all information through a few dominant pathways (large weights), the network spreads influence across many moderate-weight connections.
 This distributes evidence broadly across the input, which tends to mirror the actual structure of real classification problems.
 
-### Geometric Intuition
-
-In weight space, the cross-entropy loss defines a surface with a minimum somewhere.
-The L2 penalty defines a set of concentric spheres centered at the origin (all weights zero).
-Minimizing the penalized loss finds the point where the loss surface is tangent to the smallest possible sphere — it is the compromise between fitting the data and keeping weights small.
-The solution is always pulled toward the origin relative to the unregularized minimum.
-
-### L2 Penalty Geometry
-
-```{r l2-geometry}
-# Show how the L2 penalty landscape looks in 2D weight space
-expand_grid(w1 = seq(-3, 3, length.out = 200),
-            w2 = seq(-3, 3, length.out = 200)) %>%
-  mutate(
-    # Hypothetical cross-entropy loss minimum near (2, 1.5)
-    loss_ce  = 0.8 * (w1 - 2)^2 + 1.2 * (w2 - 1.5)^2,
-    penalty  = 0.5 * (w1^2 + w2^2),
-    total    = loss_ce + 0.4 * penalty
-  ) %>%
-  pivot_longer(c(loss_ce, penalty, total),
-               names_to  = "surface",
-               values_to = "value") %>%
-  mutate(surface = recode(surface,
-    loss_ce = "Cross-entropy loss",
-    penalty = "L2 penalty",
-    total   = "Penalized loss (λ = 0.4)"
-  )) %>%
-  ggplot(aes(x = w1, y = w2, fill = value)) +
-  geom_raster(interpolate = TRUE) +
-  geom_contour(aes(z = value), color = "white", alpha = 0.5, bins = 8) +
-  scale_fill_viridis_c(option = "plasma", direction = -1) +
-  facet_wrap(~surface) +
-  labs(
-    title    = "L2 regularization in weight space",
-    subtitle = "The penalized minimum is pulled toward the origin vs. the unregularized minimum",
-    x        = "Weight w₁",
-    y        = "Weight w₂",
-    fill     = "Value"
-  ) +
-  theme_minimal()
-```
-
----
-
 ## Dropout vs. L2: When to Use Each
 
 Both techniques reduce overfitting, but they operate differently.
 
-Dropout works by stochastic structural simplification — it randomly removes parts of the network on each pass. It tends to be most effective in large networks with many units per layer, where co-adaptation between neurons is likely.
+Dropout works by stochastic structural simplification — it randomly removes parts of the network on each pass.
+It tends to be most effective in large networks with many units per layer, where co-adaptation between neurons is likely.
 
-L2 regularization works by penalizing weight magnitude — it applies a continuous shrinkage pressure to every weight. It is effective across a wide range of architectures. 
+L2 regularization works by penalizing weight magnitude — it applies a continuous shrinkage pressure to every weight.
+It is effective across a wide range of architectures.
 
-In practice, the two are often used together.
-Dropout prevents co-adaptation; L2 prevents any surviving connection from growing too large.
 The hyperparameters ($p$ for dropout, $\lambda$ for L2) both need tuning, which is exactly what we will do with tidymodels.
 
----
+------------------------------------------------------------------------
 
 ## Loading the EMNIST Data
 
@@ -279,7 +234,7 @@ em <- em %>%
   mutate(label = as_factor(label))
 ```
 
----
+------------------------------------------------------------------------
 
 ## Train/Test Split
 
@@ -290,11 +245,11 @@ em_train <- training(split_data)
 em_test  <- testing(split_data)
 ```
 
----
+------------------------------------------------------------------------
 
 ## Recipe
 
-The recipe is identical to what we used in Lecture 14: remove zero-variance pixels (the very edge pixels are almost always black), then normalize all remaining features to have mean zero and standard deviation one.
+The recipe is identical to what we used in Lecture 14: remove zero-variance pixels (the very edge pixels are almost always non-varying), then normalize all remaining features to have mean zero and standard deviation one.
 Normalization is important for neural networks because large-scale differences between features can cause some weights to grow much faster than others during gradient descent.
 
 ```{r recipe}
@@ -306,16 +261,16 @@ em_recipe <- recipe(em_formula, em_train) %>%
   step_normalize(all_predictors())
 ```
 
----
+------------------------------------------------------------------------
 
 ## Model Specification
 
 The `brulee` engine exposes two regularization arguments directly in `mlp()`:
 
-- `dropout`: the fraction of units randomly silenced during each forward training pass (between 0 and 1).
-- `penalty`: the L2 weight decay coefficient $\lambda$ (≥ 0; setting it to 0 disables L2 regularization).
+-   `dropout`: the fraction of units randomly silenced during each forward training pass (between 0 and 1).
+-   `penalty`: the L2 weight decay coefficient $\lambda$ (≥ 0; setting it to 0 disables L2 regularization).
 
-`brulee` only allows one of these to be used at a time, we'll start with dropout. 
+`brulee` only allows one of these to be used at a time, we'll start with dropout.
 
 We will tune both alongside `epochs` and `learn_rate`.
 
@@ -331,7 +286,7 @@ nnet_reg_model <- mlp(
   set_engine("brulee")
 ```
 
----
+------------------------------------------------------------------------
 
 ## Tuning Grid
 
@@ -350,7 +305,7 @@ reg_grid <- grid_latin_hypercube(
 reg_grid
 ```
 
----
+------------------------------------------------------------------------
 
 ## Workflow and Cross-Validation
 
@@ -362,7 +317,7 @@ em_wf_reg <- workflow() %>%
 em_cv <- mc_cv(em_train, times = 10, prop = 0.80, strata = label)
 ```
 
----
+------------------------------------------------------------------------
 
 ## Tuning the Regularized Model
 
@@ -385,7 +340,7 @@ doParallel::registerDoParallel()
 }
 ```
 
----
+------------------------------------------------------------------------
 
 ## Visualizing Tuning Results
 
@@ -463,7 +418,7 @@ metrics_long %>%
   theme_minimal()
 ```
 
----
+------------------------------------------------------------------------
 
 ## Selecting the Best Configuration
 
@@ -475,7 +430,7 @@ best_reg <- select_best(reg_tune_res, metric = "mn_log_loss")
 best_reg
 ```
 
----
+------------------------------------------------------------------------
 
 ## Finalizing and Evaluating on the Test Set
 
@@ -498,7 +453,7 @@ if (fit_final) {
 collect_metrics(final_reg_res)
 ```
 
----
+------------------------------------------------------------------------
 
 ## Comparing Predictions: Correct vs. Incorrect
 
@@ -533,7 +488,7 @@ collect_predictions(final_reg_res) %>%
   theme(legend.position = "bottom")
 ```
 
----
+------------------------------------------------------------------------
 
 ## Confusion Matrix
 
@@ -548,7 +503,7 @@ collect_predictions(final_reg_res) %>%
   theme_minimal()
 ```
 
----
+------------------------------------------------------------------------
 
 ## Inspecting the Regularization Effects: A Manual Simulation
 
@@ -556,7 +511,6 @@ It is useful to see how dropout and L2 regularization affect the weight distribu
 Below we simulate a simple two-layer network trained with and without regularization on the EMNIST-like synthetic data from Lecture 15, and compare the resulting weight histograms.
 
 ```{r simulate-regularization}
-set.seed(42)
 
 # Compact forward + backward pass (adapted from Lecture 15)
 softmax_fn <- function(z) {
@@ -667,7 +621,7 @@ The weight histogram is a useful face validity check.
 L2 regularization should produce a noticeably narrower distribution centered more tightly at zero, relative to no regularization.
 Dropout tends to produce a somewhat wider distribution with fewer extreme values, reflecting the network's need to use each connection robustly rather than relying on any single large weight.
 
----
+------------------------------------------------------------------------
 
 ## Weight Magnitude by Layer: No Regularization vs. L2
 
@@ -716,12 +670,12 @@ tibble(
   )
 ```
 
----
+------------------------------------------------------------------------
 
 ## Summary
 
 | Technique | Mechanism | Key hyperparameter | Effect on weights |
-|-----------|-----------|-------------------|-------------------|
+|----------------|----------------|--------------------|--------------------|
 | **No regularization** | — | — | Can grow large; prone to co-adaptation |
 | **Dropout** | Random unit silencing during training | Dropout rate $p \in [0, 1)$ | Moderate magnitude; distributed representations |
 | **L2 weight decay** | Penalty on $\sum w^2$ added to loss | Penalty $\lambda \geq 0$ | Shrinks toward zero; narrow distribution |
