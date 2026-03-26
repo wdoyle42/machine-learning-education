@@ -131,16 +131,16 @@ backprop_step <- function(X, Y, network, lr = 0.1) {
   loss  <- -sum(Y * log(Y_hat + 1e-12))
 
   # --- BACKWARD PASS ---
-  dZ2 <- (Y_hat - Y) / n_samples
-  dW2 <- t(dZ2) %*% A1
-  db2 <- colSums(dZ2)
+  dZ2 <- (Y_hat - Y) / n_samples #Rate of change of y wrt to Z2
+  dW2 <- t(dZ2) %*% A1 # Rate of change of W2 wrt to output function
+  db2 <- colSums(dZ2) ## biases changes are sumes of changes in Z2s
 
-  dA1       <- dZ2 %*% W2
-  dZ1       <- dA1
-  dZ1[Z1 <= 0] <- 0
+  dA1       <- dZ2 %*% W2 ## Rate of change of activiation function
+  dZ1       <- dA1 ## Same wrt to activiation
+  dZ1[Z1 <= 0] <- 0 ## Pass backward through the Relu function
 
-  dW1 <- t(dZ1) %*% X
-  db1 <- colSums(dZ1)
+  dW1 <- t(dZ1) %*% X # rate of change of Wa wrt to X
+  db1 <- colSums(dZ1) # biases changes are sumes of changes in Z2s
 
   list(
     network = list(

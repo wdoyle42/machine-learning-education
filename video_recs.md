@@ -41,7 +41,12 @@ ROC and AUC, clearly explained
 https://www.youtube.com/watch?v=4jRBRDbJemM&t=469s
 
 
-*15-neural-nets*
+
+*12-Xgboost*
+
+*14-neural-nets-intro*
+
+*15-neural-nets-backpropagation*
 
 But what is a neural net?
 https://www.youtube.com/watch?v=aircAruvnKk&t=760s

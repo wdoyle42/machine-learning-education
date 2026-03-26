@@ -1,0 +1,734 @@
+---
+title: "Regularization in Neural Networks"
+author: "Will Doyle"
+date: "2026-03-26"
+output: github_document
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+**Regularization in Neural Networks: Dropout and Weight Decay**
+
+In the previous two lectures we built intuition for how neural networks are structured and how backpropagation updates weights to minimize loss.
+We saw that a network can learn to fit training data very well.
+The problem is that fitting the training data well does not automatically mean the network will generalize to new data.
+This lecture focuses on **regularization** — a family of techniques designed specifically to reduce the gap between training performance and test performance.
+
+---
+
+## Why Regularization?
+
+Neural networks are universal function approximators.
+Given enough capacity (layers, hidden units), they can memorize any training set perfectly.
+Memorization is not learning: a network that has memorized the EMNIST training digits will predict the exact pixels it saw, but stumble when a new person's handwriting looks slightly different from any training example.
+
+
+Two of the most commonly used and best-understood regularization techniques are:
+
+- **Dropout**: randomly silences neurons during training, preventing any single pathway from becoming over-specialized.
+- **L2 weight regularization** (also called weight decay): adds a penalty to the loss proportional to the squared magnitude of the weights, discouraging any weight from growing very large.
+
+Both are available through the `brulee` engine in tidymodels.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(brulee)
+library(janitor)
+```
+
+---
+
+## The Bias–Variance Tradeoff, Revisited
+
+Before we reach for regularization tools, it helps to restate the core tradeoff.
+Every model makes predictions that are wrong for two fundamentally different reasons:
+
+- **Bias**: the model is too simple to capture the true pattern. It is systematically wrong in the same direction regardless of which training sample it sees.
+- **Variance**: the model is so sensitive to the particular training sample that small changes in the data lead to large changes in predictions. It is correct on average but wildly unstable.
+
+A deep, wide neural network with no regularization sits at the high-variance end of the spectrum.
+Adding regularization moves it toward the middle, trading a small amount of bias for a large reduction in variance.
+The goal is not to eliminate bias or variance, but to minimize their combined effect on test error.
+
+```{r bias-variance-viz}
+# Illustrate the tradeoff over a "capacity" axis, representing network complexity
+
+tibble(
+  capacity   = seq(0.5, 10, length.out = 200),
+  bias_sq    = 4 / capacity^1.4,
+  variance   = 0.15 * capacity^1.6,
+  total      = bias_sq + variance
+) %>%
+  pivot_longer(c(bias_sq, variance, total),
+               names_to  = "component",
+               values_to = "error") %>%
+  mutate(component = recode(component,
+    bias_sq  = "Bias²",
+    variance = "Variance",
+    total    = "Total error"
+  )) %>%
+  ggplot(aes(x = capacity, y = error, color = component, linetype = component)) +
+  geom_line(linewidth = 0.9) +
+  scale_color_manual(values = c(
+    "Bias²"       = "steelblue",
+    "Variance"    = "firebrick",
+    "Total error" = "grey30"
+  )) +
+  scale_linetype_manual(values = c(
+    "Bias²"       = "dashed",
+    "Variance"    = "dashed",
+    "Total error" = "solid"
+  )) +
+  labs(
+    title    = "Bias–variance tradeoff as network capacity grows",
+    subtitle = "Regularization reduces variance at the cost of a small increase in bias",
+    x        = "Network capacity (layers × units)",
+    y        = "Expected error",
+    color    = NULL, linetype = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+---
+
+## Dropout
+
+### The Idea
+
+Dropout was introduced by Srivastava et al. (2014) and remains one of the most widely used regularization techniques in deep learning.
+During each forward pass in training, every neuron in a dropout layer is independently set to zero with probability $p$ (the **dropout rate**), and the surviving activations are scaled up by $\frac{1}{1-p}$ so that the expected output remains unchanged.
+
+At test time, dropout is turned off: all neurons are active, and no scaling is needed (since training already compensated for the dropped units).
+
+### Why Does Dropout Work?
+
+Think about what happens without dropout.
+If neuron A learns that "a bright pixel in position 312 combined with a dark pixel in position 104 implies the digit is 7," it can specialize entirely around that co-occurrence.
+Other neurons learn to co-depend on A.
+The network builds brittle, highly specific circuits.
+
+Dropout breaks this kind of brittle arrangement.Because any neuron might be silenced on any given forward pass, every neuron has to learn features that are useful on their own. The network is forced to develop redundant, overlapping representations — which happen to be far more robust to the variation in new handwriting samples.
+
+
+### Dropout as an Ensemble
+
+There is a more formal way to see why dropout helps.
+Training a network with dropout rate $p$ on $N$ units is approximately equivalent to averaging over $2^N$ different network architectures (one for each possible mask of dropped neurons).
+No single architecture is trained to convergence, but the shared weights encode the average behavior of this vast ensemble.
+Ensemble methods consistently outperform single models precisely because averaging reduces variance — and dropout is a computationally efficient way to get much of that benefit.
+
+### A Hand-Crafted Dropout Example
+
+Before using dropout inside a full model, let's see exactly what happens to activations.
+We'll take a hidden layer activation vector and apply dropout manually.
+
+```{r dropout-demo}
+
+# Simulated hidden-layer activations for one sample (10 units)
+activations <- c(0.8, -0.3, 1.2, 0.05, -1.1, 0.6, 0.2, -0.9, 1.5, 0.4)
+
+apply_dropout <- function(activations, rate = 0.5, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  n    <- length(activations)
+  mask <- rbinom(n, size = 1, prob = 1 - rate)
+  # Scale surviving units so expected output is unchanged
+  dropped  <- activations * mask / (1 - rate)
+  tibble(
+    unit       = seq_len(n),
+    original   = activations,
+    mask       = mask,
+    post_drop  = dropped
+  )
+}
+
+# Two different dropout masks for the same activations (rate = 0.5)
+bind_rows(
+  apply_dropout(activations, rate = 0.5, seed = 1) %>% mutate(pass = "Forward pass 1"),
+  apply_dropout(activations, rate = 0.5, seed = 7) %>% mutate(pass = "Forward pass 2")
+) %>%
+  pivot_longer(c(original, post_drop),
+               names_to  = "stage",
+               values_to = "activation") %>%
+  mutate(
+    stage = recode(stage, original = "Pre-dropout", post_drop = "Post-dropout"),
+    stage = fct_inorder(stage),
+    silenced = (mask == 0 & stage == "Post-dropout")
+  ) %>%
+  ggplot(aes(x = factor(unit), y = activation, fill = silenced)) +
+  geom_col(position = "identity") +
+  scale_fill_manual(values = c("FALSE" = "steelblue", "TRUE" = "grey85"),
+                    labels  = c("Active", "Silenced")) +
+  facet_grid(pass ~ stage) +
+  labs(
+    title    = "Dropout applied to the same activation vector across two forward passes",
+    subtitle = "Different masks are drawn each time; surviving units are rescaled",
+    x        = "Hidden unit index",
+    y        = "Activation value",
+    fill     = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+Notice that the two forward passes silence different units, and the surviving activations are scaled up.
+From the network's perspective, it is never trained on exactly the same sub-architecture twice, which is the source of its regularizing power.
+
+---
+
+## L2 Weight Regularization
+
+### The Idea
+
+L2 regularization (also called **weight decay**) adds a penalty term to the loss function:
+
+$$
+\tilde{L} = L_{\text{cross-entropy}} + \frac{\lambda}{2} \sum_{i,j} w_{ij}^2
+$$
+
+Here $\lambda$ is the **penalty** hyperparameter that controls how strongly we penalize large weights.
+The gradient of the penalty with respect to any weight $w$ is simply $\lambda w$, so the weight update becomes:
+
+$$
+w \leftarrow w - \eta \frac{\partial L}{\partial w} - \eta \lambda w
+$$
+
+The second term, $-\eta \lambda w$, shrinks every weight toward zero at each update — a "decay" proportional to the weight's current size.
+
+### Why Does L2 Regularization Work?
+
+Large weights are dangerous because they make the network's output extremely sensitive to small changes in input.
+A weight of 10 means a tiny pixel intensity change ripples through the network as a large signal.
+A weight of 0.1 means the same input change barely moves the output.
+
+L2 regularization enforces a preference for **small, distributed weights**.
+Instead of routing all information through a few dominant pathways (large weights), the network spreads influence across many moderate-weight connections.
+This distributes evidence broadly across the input, which tends to mirror the actual structure of real classification problems.
+
+### Geometric Intuition
+
+In weight space, the cross-entropy loss defines a surface with a minimum somewhere.
+The L2 penalty defines a set of concentric spheres centered at the origin (all weights zero).
+Minimizing the penalized loss finds the point where the loss surface is tangent to the smallest possible sphere — it is the compromise between fitting the data and keeping weights small.
+The solution is always pulled toward the origin relative to the unregularized minimum.
+
+### L2 Penalty Geometry
+
+```{r l2-geometry}
+# Show how the L2 penalty landscape looks in 2D weight space
+expand_grid(w1 = seq(-3, 3, length.out = 200),
+            w2 = seq(-3, 3, length.out = 200)) %>%
+  mutate(
+    # Hypothetical cross-entropy loss minimum near (2, 1.5)
+    loss_ce  = 0.8 * (w1 - 2)^2 + 1.2 * (w2 - 1.5)^2,
+    penalty  = 0.5 * (w1^2 + w2^2),
+    total    = loss_ce + 0.4 * penalty
+  ) %>%
+  pivot_longer(c(loss_ce, penalty, total),
+               names_to  = "surface",
+               values_to = "value") %>%
+  mutate(surface = recode(surface,
+    loss_ce = "Cross-entropy loss",
+    penalty = "L2 penalty",
+    total   = "Penalized loss (λ = 0.4)"
+  )) %>%
+  ggplot(aes(x = w1, y = w2, fill = value)) +
+  geom_raster(interpolate = TRUE) +
+  geom_contour(aes(z = value), color = "white", alpha = 0.5, bins = 8) +
+  scale_fill_viridis_c(option = "plasma", direction = -1) +
+  facet_wrap(~surface) +
+  labs(
+    title    = "L2 regularization in weight space",
+    subtitle = "The penalized minimum is pulled toward the origin vs. the unregularized minimum",
+    x        = "Weight w₁",
+    y        = "Weight w₂",
+    fill     = "Value"
+  ) +
+  theme_minimal()
+```
+
+---
+
+## Dropout vs. L2: When to Use Each
+
+Both techniques reduce overfitting, but they operate differently.
+
+Dropout works by stochastic structural simplification — it randomly removes parts of the network on each pass. It tends to be most effective in large networks with many units per layer, where co-adaptation between neurons is likely.
+
+L2 regularization works by penalizing weight magnitude — it applies a continuous shrinkage pressure to every weight. It is effective across a wide range of architectures. 
+
+In practice, the two are often used together.
+Dropout prevents co-adaptation; L2 prevents any surviving connection from growing too large.
+The hyperparameters ($p$ for dropout, $\lambda$ for L2) both need tuning, which is exactly what we will do with tidymodels.
+
+---
+
+## Loading the EMNIST Data
+
+We will use the same EMNIST digit dataset from Lectures 14 and 15.
+Each observation is a 28×28 pixel grayscale image of a handwritten digit (0–9), flattened into 784 features.
+
+```{r load-data, message=FALSE}
+em <- read_csv("emnist-digits-train.csv") %>%
+  clean_names() %>%
+  rename_with(~ c("label", paste0("pix_", 1:784)))
+
+em <- em %>%
+  mutate(label = as_factor(label))
+```
+
+---
+
+## Train/Test Split
+
+```{r split}
+split_data <- em %>% initial_split()
+
+em_train <- training(split_data)
+em_test  <- testing(split_data)
+```
+
+---
+
+## Recipe
+
+The recipe is identical to what we used in Lecture 14: remove zero-variance pixels (the very edge pixels are almost always black), then normalize all remaining features to have mean zero and standard deviation one.
+Normalization is important for neural networks because large-scale differences between features can cause some weights to grow much faster than others during gradient descent.
+
+```{r recipe}
+em_formula <- as.formula("label ~ .")
+
+em_recipe <- recipe(em_formula, em_train) %>%
+  update_role(label, new_role = "outcome") %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors())
+```
+
+---
+
+## Model Specification
+
+The `brulee` engine exposes two regularization arguments directly in `mlp()`:
+
+- `dropout`: the fraction of units randomly silenced during each forward training pass (between 0 and 1).
+- `penalty`: the L2 weight decay coefficient $\lambda$ (≥ 0; setting it to 0 disables L2 regularization).
+
+`brulee` only allows one of these to be used at a time, we'll start with dropout. 
+
+We will tune both alongside `epochs` and `learn_rate`.
+
+```{r model-spec}
+nnet_reg_model <- mlp(
+  hidden_units = c(64, 32),
+  epochs       = tune(),
+  learn_rate   = tune(),
+  dropout      = tune(),
+  activation   = "relu"
+) %>%
+  set_mode("classification") %>%
+  set_engine("brulee")
+```
+
+---
+
+## Tuning Grid
+
+We set up a Latin hypercube grid to explore the hyperparameter space efficiently.
+A regular grid over four dimensions would require $k^4$ evaluations; the Latin hypercube design gives broad coverage with many fewer.
+
+```{r grid}
+
+reg_grid <- grid_latin_hypercube(
+  epochs(range     = c(20L, 100L)),
+  learn_rate(range = c(-3, -1)),      # log10 scale → 0.001 to 0.1
+  dropout(range    = c(0, 0.5)),
+  size = 20
+)
+
+reg_grid
+```
+
+---
+
+## Workflow and Cross-Validation
+
+```{r workflow}
+em_wf_reg <- workflow() %>%
+  add_model(nnet_reg_model) %>%
+  add_recipe(em_recipe)
+
+em_cv <- mc_cv(em_train, times = 10, prop = 0.80, strata = label)
+```
+
+---
+
+## Tuning the Regularized Model
+
+```{r tune, message=FALSE, warning=FALSE}
+fit_reg_model <- TRUE
+
+if (fit_reg_model) {
+doParallel::registerDoParallel()
+  reg_tune_res <- em_wf_reg %>%
+    tune_grid(
+      resamples = em_cv,
+      grid      = reg_grid,
+      metrics   = metric_set(accuracy, mn_log_loss)
+    )
+
+  save(reg_tune_res, file = "reg_tune_res.Rdata")
+
+} else {
+  load("reg_tune_res.Rdata")
+}
+```
+
+---
+
+## Visualizing Tuning Results
+
+### Overall Performance Distribution
+
+```{r viz-tune-dist}
+collect_metrics(reg_tune_res) %>%
+  filter(.metric == "mn_log_loss") %>%
+  ggplot(aes(x = mean)) +
+  geom_histogram(bins = 15, fill = "steelblue", color = "white") +
+  geom_vline(
+    aes(xintercept = min(mean)),
+    color = "firebrick", linetype = "dashed"
+  ) +
+  labs(
+    title    = "Distribution of mean log loss across the tuning grid",
+    subtitle = "Dashed line marks the best configuration",
+    x        = "Mean log loss (Monte Carlo CV)",
+    y        = "Count"
+  ) +
+  theme_minimal()
+```
+
+### Effect of Dropout and Penalty on Log Loss
+
+```{r viz-dropout-penalty}
+collect_metrics(reg_tune_res) %>%
+  filter(.metric == "mn_log_loss") %>%
+  ggplot(aes(x = dropout, y = penalty, color = mean, size = mean)) +
+  geom_point(alpha = 0.8) +
+  scale_color_viridis_c(option = "plasma", direction = -1,
+                        name = "Mean\nlog loss") +
+  scale_size_continuous(range = c(2, 7), guide = "none") +
+  scale_y_log10(labels = scales::label_scientific()) +
+  labs(
+    title    = "Dropout rate vs. L2 penalty: effect on mean log loss",
+    subtitle = "Darker / smaller points indicate better performance",
+    x        = "Dropout rate",
+    y        = "L2 penalty (log scale)"
+  ) +
+  theme_minimal()
+```
+
+### Marginal Effects of Each Hyperparameter
+
+Each panel below shows the relationship between one hyperparameter and mean log loss, averaging over all other hyperparameter values in the grid.
+This reveals which knobs matter most.
+
+```{r viz-marginal}
+metrics_long <- collect_metrics(reg_tune_res) %>%
+  filter(.metric == "mn_log_loss") %>%
+  select(dropout, penalty, learn_rate, epochs, mean)
+
+metrics_long %>%
+  pivot_longer(c(dropout, penalty, learn_rate, epochs),
+               names_to  = "hyperparameter",
+               values_to = "value") %>%
+  mutate(hyperparameter = recode(hyperparameter,
+    dropout    = "Dropout rate",
+    penalty    = "L2 penalty",
+    learn_rate = "Learning rate",
+    epochs     = "Epochs"
+  )) %>%
+  ggplot(aes(x = value, y = mean)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_smooth(method = "loess", se = TRUE, color = "firebrick",
+              fill = "firebrick", alpha = 0.15) +
+  facet_wrap(~ hyperparameter, scales = "free_x") +
+  labs(
+    title    = "Marginal effect of each hyperparameter on mean log loss",
+    subtitle = "Smoothed trend across the 20-point Latin hypercube grid",
+    x        = "Hyperparameter value",
+    y        = "Mean log loss"
+  ) +
+  theme_minimal()
+```
+
+---
+
+## Selecting the Best Configuration
+
+```{r best}
+show_best(reg_tune_res, metric = "mn_log_loss", n = 5)
+
+best_reg <- select_best(reg_tune_res, metric = "mn_log_loss")
+
+best_reg
+```
+
+---
+
+## Finalizing and Evaluating on the Test Set
+
+```{r final-fit, message=FALSE, warning=FALSE}
+fit_final <- FALSE
+
+if (fit_final) {
+
+  final_reg_wf <- finalize_workflow(em_wf_reg, best_reg)
+
+  final_reg_res <- last_fit(final_reg_wf, split_data,
+                            metrics = metric_set(accuracy, mn_log_loss))
+
+  save(final_reg_res, file = "final_reg_res.Rdata")
+
+} else {
+  load("final_reg_res.Rdata")
+}
+
+collect_metrics(final_reg_res)
+```
+
+---
+
+## Comparing Predictions: Correct vs. Incorrect
+
+Where does the model still go wrong?
+Looking at the distribution of predicted probabilities for correct vs. incorrect predictions can reveal whether errors are confident mistakes (bad) or uncertain near-misses (more forgivable).
+
+```{r pred-distribution}
+collect_predictions(final_reg_res) %>%
+  mutate(
+    correct       = (.pred_class == label),
+    prob_true_class = map2_dbl(
+      seq_len(n()),
+      as.integer(label) - 1L,
+      ~ {
+        col_name <- paste0(".pred_", .y)
+        cur_data()[[col_name]][.x]
+      }
+    )
+  ) %>%
+  ggplot(aes(x = prob_true_class, fill = correct)) +
+  geom_histogram(bins = 30, position = "identity", alpha = 0.65) +
+  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "firebrick"),
+                    labels  = c("Incorrect", "Correct")) +
+  labs(
+    title    = "Predicted probability assigned to the true class",
+    subtitle = "Correct predictions concentrate near 1; errors concentrate near 0",
+    x        = "P(true class)",
+    y        = "Count",
+    fill     = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+---
+
+## Confusion Matrix
+
+```{r confusion}
+collect_predictions(final_reg_res) %>%
+  conf_mat(truth = label, estimate = .pred_class) %>%
+  autoplot(type = "heatmap") +
+  labs(
+    title    = "Confusion matrix on held-out test set",
+    subtitle = "Diagonal = correct classifications; off-diagonal = error patterns"
+  ) +
+  theme_minimal()
+```
+
+---
+
+## Inspecting the Regularization Effects: A Manual Simulation
+
+It is useful to see how dropout and L2 regularization affect the weight distribution that emerges from training.
+Below we simulate a simple two-layer network trained with and without regularization on the EMNIST-like synthetic data from Lecture 15, and compare the resulting weight histograms.
+
+```{r simulate-regularization}
+set.seed(42)
+
+# Compact forward + backward pass (adapted from Lecture 15)
+softmax_fn <- function(z) {
+  ez <- exp(z - apply(z, 1, max))
+  ez / rowSums(ez)
+}
+
+train_network <- function(X, Y,
+                          hidden_dim = 20,
+                          lr         = 0.05,
+                          n_iter     = 300,
+                          lambda     = 0,       # L2 penalty
+                          drop_rate  = 0) {     # dropout rate
+  n  <- nrow(X)
+  k  <- ncol(X)
+  j  <- ncol(Y)
+
+  W1 <- matrix(rnorm(hidden_dim * k,    0, 0.1), hidden_dim, k)
+  b1 <- rep(0, hidden_dim)
+  W2 <- matrix(rnorm(j * hidden_dim,    0, 0.1), j, hidden_dim)
+  b2 <- rep(0, j)
+
+  for (i in seq_len(n_iter)) {
+    # --- forward pass with optional dropout ---
+    Z1 <- X %*% t(W1) + matrix(rep(b1, each = n), n)
+    A1 <- pmax(0, Z1)
+
+    if (drop_rate > 0) {
+      mask <- matrix(rbinom(n * hidden_dim, 1, 1 - drop_rate),
+                     nrow = n, ncol = hidden_dim) / (1 - drop_rate)
+      A1   <- A1 * mask
+    }
+
+    Z2    <- A1 %*% t(W2) + matrix(rep(b2, each = n), n)
+    Y_hat <- softmax_fn(Z2)
+
+    # --- backward pass ---
+    dZ2 <- (Y_hat - Y) / n
+    dW2 <- t(dZ2) %*% A1 + lambda * W2  # L2 gradient
+    db2 <- colSums(dZ2)
+
+    dA1       <- dZ2 %*% W2
+    dZ1       <- dA1
+    dZ1[Z1 <= 0] <- 0
+
+    dW1 <- t(dZ1) %*% X + lambda * W1   # L2 gradient
+    db1 <- colSums(dZ1)
+
+    W1 <- W1 - lr * dW1
+    b1 <- b1 - lr * db1
+    W2 <- W2 - lr * dW2
+    b2 <- b2 - lr * db2
+  }
+
+  list(W1 = W1, W2 = W2)
+}
+
+# Build a small synthetic dataset (same structure as Lecture 15)
+generate_synthetic_data <- function(n_samples = 800,
+                                    input_dim  = 784,
+                                    n_classes  = 10,
+                                    noise_sd   = 0.5) {
+  centroids <- matrix(rnorm(n_classes * input_dim), n_classes, input_dim)
+  class_ids <- sample(0:(n_classes - 1), n_samples, replace = TRUE)
+  X <- centroids[class_ids + 1, ] +
+    matrix(rnorm(n_samples * input_dim, 0, noise_sd), n_samples, input_dim)
+  Y <- matrix(0, n_samples, n_classes)
+  Y[cbind(seq_len(n_samples), class_ids + 1)] <- 1
+  list(X = X, Y = Y)
+}
+
+synth     <- generate_synthetic_data()
+X_sim     <- synth$X
+Y_sim     <- synth$Y
+
+# Train three variants
+net_none  <- train_network(X_sim, Y_sim, lambda = 0,    drop_rate = 0)
+net_l2    <- train_network(X_sim, Y_sim, lambda = 0.01, drop_rate = 0)
+net_drop  <- train_network(X_sim, Y_sim, lambda = 0,    drop_rate = 0.4)
+
+# Tidy weight distributions for W1
+bind_rows(
+  tibble(weight = as.vector(net_none$W1),  regularization = "No regularization"),
+  tibble(weight = as.vector(net_l2$W1),    regularization = "L2 (λ = 0.01)"),
+  tibble(weight = as.vector(net_drop$W1),  regularization = "Dropout (p = 0.4)")
+) %>%
+  mutate(regularization = fct_inorder(regularization)) %>%
+  ggplot(aes(x = weight, fill = regularization)) +
+  geom_histogram(bins = 60, alpha = 0.7, position = "identity") +
+  facet_wrap(~ regularization, ncol = 1) +
+  scale_fill_manual(values = c(
+    "No regularization"  = "grey60",
+    "L2 (λ = 0.01)"     = "firebrick",
+    "Dropout (p = 0.4)" = "steelblue"
+  )) +
+  labs(
+    title    = "W1 weight distributions under different regularization strategies",
+    subtitle = "L2 concentrates weights near zero; dropout spreads and moderates them",
+    x        = "Weight value",
+    y        = "Count",
+    fill     = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+The weight histogram is a useful face validity check.
+L2 regularization should produce a noticeably narrower distribution centered more tightly at zero, relative to no regularization.
+Dropout tends to produce a somewhat wider distribution with fewer extreme values, reflecting the network's need to use each connection robustly rather than relying on any single large weight.
+
+---
+
+## Weight Magnitude by Layer: No Regularization vs. L2
+
+A companion view: the mean absolute weight magnitude in each layer across the three conditions.
+This distills the histogram into a single comparison.
+
+```{r weight-magnitude}
+tibble(
+  regularization = c("No regularization", "L2 (λ = 0.01)", "Dropout (p = 0.4)"),
+  W1_mean_abs    = c(mean(abs(net_none$W1)),
+                     mean(abs(net_l2$W1)),
+                     mean(abs(net_drop$W1))),
+  W2_mean_abs    = c(mean(abs(net_none$W2)),
+                     mean(abs(net_l2$W2)),
+                     mean(abs(net_drop$W2)))
+) %>%
+  pivot_longer(c(W1_mean_abs, W2_mean_abs),
+               names_to  = "layer",
+               values_to = "mean_abs_weight") %>%
+  mutate(
+    regularization = fct_inorder(regularization),
+    layer = recode(layer,
+      W1_mean_abs = "W1 (input → hidden)",
+      W2_mean_abs = "W2 (hidden → output)"
+    )
+  ) %>%
+  ggplot(aes(x = regularization, y = mean_abs_weight, fill = regularization)) +
+  geom_col(width = 0.6) +
+  scale_fill_manual(values = c(
+    "No regularization"  = "grey60",
+    "L2 (λ = 0.01)"     = "firebrick",
+    "Dropout (p = 0.4)" = "steelblue"
+  )) +
+  facet_wrap(~ layer) +
+  labs(
+    title    = "Mean absolute weight magnitude by layer and regularization strategy",
+    subtitle = "L2 strongly shrinks weights; dropout has a more moderate effect",
+    x        = NULL,
+    y        = "Mean |weight|",
+    fill     = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x  = element_text(angle = 20, hjust = 1),
+    legend.position = "none"
+  )
+```
+
+---
+
+## Summary
+
+| Technique | Mechanism | Key hyperparameter | Effect on weights |
+|-----------|-----------|-------------------|-------------------|
+| **No regularization** | — | — | Can grow large; prone to co-adaptation |
+| **Dropout** | Random unit silencing during training | Dropout rate $p \in [0, 1)$ | Moderate magnitude; distributed representations |
+| **L2 weight decay** | Penalty on $\sum w^2$ added to loss | Penalty $\lambda \geq 0$ | Shrinks toward zero; narrow distribution |
+
+Regularization is not a substitute for having enough data or an appropriate architecture.
+It is most useful when the network has more capacity than it strictly needs — a common situation in practice, since we tend to err on the side of too-large networks and then regularize.
+
+Both dropout and L2 regularization are tunable through the `brulee` engine in tidymodels using exactly the same workflow we have used throughout this lecture sequence.
+Choose your candidate ranges thoughtfully: very high dropout rates starve the network of signal; very high L2 penalties shrink weights so aggressively that the network can no longer fit the training data.
+The bias-variance tradeoff is always present — regularization shifts where you sit on that curve, but the curve itself does not go away.
