@@ -1,0 +1,834 @@
+---
+title: "Building a Modern, Reproducible Data Science Workflow"
+author: "Will Doyle"
+date: "2026-03-31"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  eval    = FALSE   # most chunks are illustrative; set eval=TRUE selectively
+)
+```
+
+---
+
+# Overview
+
+This lecture steps back from modeling to ask a question that matters as much
+as model accuracy: *how do you organize a data science project so that it is
+reproducible, collaborative, and maintainable?*
+
+We have spent this course building sophisticated models. But a model that
+cannot be reproduced, that lives inside a single monolithic script, or that
+breaks when a package updates, is not a finished product — it is a liability.
+
+By the end of this lecture you will be able to:
+
+- Initialize a project correctly from a GitHub repository
+- Establish and document project conventions *before* writing analysis code
+- Structure a research compendium that separates concerns across files
+- Use `{targets}` to build a dependency-aware analysis pipeline
+- Apply `renv` and `here` to achieve environment and path reproducibility
+- Write a paper-style Rmd that contains *no computation*, only results
+
+---
+
+# 1. Start with GitHub, Not with Code
+
+The single most common workflow mistake is writing code first and thinking
+about organization later. By the time you realize your project needs
+structure, you have already made dozens of implicit decisions that are hard
+to undo.
+
+**The correct sequence is:**
+
+```
+Create GitHub repo → Clone locally → Set up infrastructure → Write code
+```
+
+Never the reverse.
+
+## 1.1 Create the Repository on GitHub First
+
+Go to GitHub and create a new repository *before opening RStudio*. This
+matters for several reasons:
+
+- The repo is the unit of the project. Everything lives inside it.
+- It forces you to name the project before you start — a useful discipline.
+- Cloning gives you a clean `.git/` history from the first commit.
+- Collaborators (or your future self) can clone and immediately have a
+  working copy.
+
+**Naming conventions for repos:**
+
+```
+# Good: lowercase, hyphens or underscores, descriptive
+predict_major
+els-college-outcomes
+nnet-wage-prediction
+
+# Bad: generic, dated, ambiguous
+analysis_final
+project2_v3
+NEW_FINAL_USE_THIS
+```
+
+The name you give the repo *is* the name you give the project. Choose it
+carefully and do not change it.
+
+## 1.2 Clone, Don't Create
+
+After creating the repo on GitHub, clone it to your machine:
+
+```bash
+# In the terminal (not the R console)
+git clone https://github.com/yourusername/predict_major.git
+cd predict_major
+```
+
+Then open the cloned folder as an RStudio project (`File → Open Project` or
+`File → New Project → Existing Directory`). RStudio will detect the `.git/`
+folder and activate git integration automatically.
+
+**Never use `File → New Project → New Directory` for a project that will
+live on GitHub.** That workflow creates the project locally first and
+requires manual git initialization — an extra step that students frequently
+skip or do incorrectly.
+
+---
+
+# 2. Conventions Before Code
+
+The second most common workflow mistake is jumping into writing functions
+before agreeing on how files will be named, how scripts will communicate
+with each other, and what the output format will be.
+
+Conventions are rules the project follows consistently. They reduce
+cognitive overhead because you never have to remember *how* something is
+done — you just apply the rule. A small set of well-chosen conventions is
+worth more than a large set of loosely followed ones.
+
+## 2.1 The Conventions We Follow in This Course
+
+We will specify these conventions at the start of every project and record
+them in the `README.md`. Here are the ones I use in `predict_major`:
+
+**File naming**
+
+```
+# All files: snake_case, no spaces, no dates
+wrangle.R       # good
+Wrangle Final.R # bad — spaces and capital letter
+wrangle_v2.R    # bad — version number in filename (git handles versions)
+```
+
+**Pipes**
+
+```r
+# Always %>% (magrittr), never base R |>
+# Reason: consistent with tidyverse; |> has subtle behavioral differences
+# with some tidyverse functions (e.g., argument placeholders)
+data %>% filter(x > 0) %>% select(y)   # correct
+data |> filter(x > 0) |> select(y)     # avoid in this project
+```
+
+**Paths**
+
+```r
+# Always here::here(), never setwd(), never absolute paths, never ../
+here::here("data", "raw", "els.dta")   # correct
+"/Users/will/projects/predict_major/data/raw/els.dta"  # wrong — breaks on any other machine
+"../../data/raw/els.dta"               # wrong — breaks if directory depth changes
+```
+
+**How scripts communicate**
+
+```r
+# Scripts do not source each other.
+# Objects are passed through the targets pipeline.
+# A function in R/wrangle.R produces an object.
+# _targets.R defines a target that calls that function.
+# Other targets read the cached output via tar_read() / tar_load().
+```
+
+**No side effects in R/ functions**
+
+```r
+# Functions in R/ should:
+#   - take inputs as arguments
+#   - return a value
+#   - never write files (except figure-saving functions, which return the path)
+#   - never call library() or require()
+#   - never set options() or par()
+
+# Good
+make_analytic_sample <- function(els_clean) {
+  els_clean %>% filter(f2evratt == 1, !is.na(cip2))
+}
+
+# Bad
+make_analytic_sample <- function() {
+  library(tidyverse)            # bad: side effect
+  load("data/els_clean.rda")   # bad: reads from fixed path, not an argument
+  els_clean <<- els_clean %>%  # bad: global assignment
+    filter(f2evratt == 1)
+}
+```
+
+**Iteration style**
+
+```r
+# Always purrr (map/map2/walk/etc.) over for loops for functional tasks
+# Reason: explicit about input/output types, composable, no loop variable leakage
+
+# Good
+results <- map(models, ~ extract_metrics(.x))
+
+# Avoid
+results <- list()
+for (i in seq_along(models)) {
+  results[[i]] <- extract_metrics(models[[i]])
+}
+```
+
+**Random seeds**
+
+```r
+# Set once per target that involves randomness.
+# Use a project-wide constant — we use 2002 (ELS base year).
+# Document it in _targets.R so the choice is visible and intentional.
+set.seed(2002)
+```
+
+## 2.2 Where to Document Conventions
+
+Record conventions in two places:
+
+1. **`README.md`** — a "Contributing" or "Code conventions" section that
+   anyone cloning the repo reads first.
+
+2. **Comments in `_targets.R`** — because `_targets.R` is the entry point
+   for anyone trying to understand the pipeline, it is a natural place to
+   state the rules that govern how the pipeline is organized.
+
+---
+
+# 3. Project Structure: Separation of Concerns
+
+A well-organized project has *one place for each kind of thing*. This
+principle is called **separation of concerns**. Violation looks like this:
+
+```r
+# analysis.R — everything in one file (don't do this)
+library(tidyverse)
+library(tidymodels)
+els <- read_dta("els.dta")
+els <- els %>% filter(f2evratt == 1)
+rec <- recipe(cip2 ~ ., data = els) %>% step_normalize(all_numeric_predictors())
+fit <- workflow() %>% add_recipe(rec) %>% add_model(mlp() %>% set_engine("keras")) %>% fit(els)
+predict(fit, els)
+# ... 800 more lines
+```
+
+This is common and it is fragile. Changing the recipe requires you to hunt
+through the file for where the recipe ends and the model begins. Rerunning
+the model means rerunning the data wrangling. Extracting a figure for a
+presentation means copying code out of context.
+
+## 3.1 The Structure You _Should_ Use
+
+```
+predict_major/
+│
+├── _targets.R          # Pipeline definition — the spine of the project
+│
+├── R/                  # Function definitions only — no side effects
+│   ├── wrangle.R       # Data loading, recoding, analytic sample
+│   ├── recipe.R        # Preprocessing recipe construction
+│   ├── model.R         # Model spec and workflow
+│   ├── fit.R           # Tuning, parameter selection, final fit
+│   ├── evaluate.R      # Metrics, predictions, confusion matrix
+│   ├── importance.R    # Variable importance
+│   ├── visualize.R     # All ggplot figures
+│   └── tables.R        # All tables
+│
+├── paper/
+│   ├── paper.Rmd       # Manuscript — no computation, only tar_read()
+│   ├── appendix.Rmd    # Online appendix
+│   └── references.bib  # BibTeX bibliography
+│
+├── data/
+│   ├── raw/            # Original data (gitignored if restricted-use)
+│   ├── processed/      # Analytic datasets (gitignored, regenerated by pipeline)
+│   └── codebook/       # Variable documentation, crosswalks
+│
+└── outputs/
+    ├── figures/        # Saved plots (.pdf + .png)
+    ├── tables/         # Saved tables (.rds + .csv)
+    └── models/         # Saved model objects (.rds)
+```
+
+**The key idea**: `R/` contains definitions; `_targets.R` contains the
+plan; `paper/` contains narrative. Nothing crosses those boundaries.
+
+## 3.2 The Thin Paper Principle
+
+The paper Rmd should be *thin*. Its job is to tell a story using results
+that already exist. It should contain:
+
+```r
+# Good: paper.Rmd only does this
+tar_load(performance_metrics)
+acc <- performance_metrics %>% filter(.metric == "accuracy") %>% pull(.estimate)
+```
+
+```r
+# Bad: paper.Rmd should never do this
+els <- read_dta(here("data", "raw", "els.dta")) %>%
+  filter(f2evratt == 1) %>%
+  ...
+fit <- workflow() %>% fit(els_train)
+```
+
+When computation lives in the paper Rmd:
+
+- Rendering the paper requires rerunning the model (which may take hours)
+- Changing a figure requires re-rendering the paper
+- A broken model breaks the paper even if the narrative is fine
+- There is no audit trail separating "the analysis" from "the write-up"
+
+Keep the paper thin. Let targets do the work.
+
+---
+
+# 4. Reproducibility Infrastructure
+
+Three tools work together to make a project reproducible on any machine,
+by any person, at any point in the future.
+
+| Tool | What it solves |
+|---|---|
+| `git` / GitHub | Tracks *changes to code* over time |
+| `renv` | Tracks *which packages* (and which versions) were used |
+| `here` | Tracks *where files live* relative to the project root |
+
+You need all three. Each solves a different part of the reproducibility
+problem.
+
+## 4.1 `renv`: Locking Package Versions
+
+The problem `renv` solves: you fit a model in November using `tidymodels`
+0.2.1. A collaborator clones your repo in February after `tidymodels` 0.3.0
+has been released. Behavior has changed. Results differ. Nobody knows why.
+
+`renv` creates a **lockfile** (`renv.lock`) that records the exact version
+of every package your project uses. Anyone who clones the repo and runs
+`renv::restore()` gets identical package versions.
+
+```r
+# One-time setup for a new project
+renv::init()         # creates renv/ directory and renv.lock
+
+# After installing or updating any package
+renv::snapshot()     # updates renv.lock to reflect current state
+
+# After cloning a repo with an existing renv.lock
+renv::restore()      # installs the exact package versions recorded
+```
+
+**What to commit to git:**
+
+```
+# Commit these
+renv.lock           # the version record — always commit
+renv/activate.R     # the bootstrap script — always commit
+.Rprofile           # activates renv on project open — always commit
+
+# Do NOT commit these (add to .gitignore)
+renv/library/       # the installed packages — large, machine-specific
+```
+
+**The `.Rprofile` that activates `renv` automatically:**
+
+```r
+# .Rprofile
+source("renv/activate.R")
+```
+
+With this in place, anyone who opens the project in RStudio will have `renv`
+activated without any manual steps.
+
+## 4.2 `here`: Path Independence
+
+The problem `here` solves: a script that works on your machine breaks on
+a collaborator's machine because you hardcoded an absolute path, or uses
+`../` navigation that breaks if the calling context changes.
+
+`here::here()` constructs file paths relative to the **project root** —
+the directory containing the `DESCRIPTION` file (or `.here` file, or
+`.Rproj` file). It works correctly regardless of where R's working
+directory is set, what operating system is being used, or who is running
+the code.
+
+```r
+# here() finds the project root and builds the path from there
+here::here("data", "raw", "els.dta")
+# → /Users/will/projects/predict_major/data/raw/els.dta  (on Will's machine)
+# → /home/student/predict_major/data/raw/els.dta          (on any other machine)
+# → C:/Users/Student/predict_major/data/raw/els.dta       (on Windows)
+
+# The DESCRIPTION file anchors the root
+# (Using DESCRIPTION also makes the project an R package, which renv understands)
+```
+
+**Anchor `here` explicitly in `.Rprofile`:**
+
+```r
+# .Rprofile
+source("renv/activate.R")
+
+if (requireNamespace("here", quietly = TRUE)) {
+  here::i_am("DESCRIPTION")
+}
+```
+
+`here::i_am("DESCRIPTION")` tells `here` exactly which file marks the
+project root. This is more robust than relying on `.Rproj` detection.
+
+## 4.3 `git`: Version Control for Code
+
+You already know how to use git. A few discipline points that matter for
+research projects specifically:
+
+**Commit messages should describe intent, not mechanics. answer the question, "why did you do make changes to this file?**
+
+```bash
+# Bad
+git commit -m "fixed stuff"
+git commit -m "updated wrangle.R"
+
+# Good
+git commit -m "add missingness indicators to recipe for transcript GPA vars"
+git commit -m "collapse CIP codes 5 and 28 into other category (n < 30)"
+git commit -m "switch tuning metric from accuracy to macro-weighted ROC AUC"
+```
+
+**Commit logical units of work, not daily dumps:**
+
+```bash
+# Bad: one giant commit at end of day
+git add -A && git commit -m "day's work"
+
+# Good: one commit per meaningful change
+git add R/recipe.R && git commit -m "add step_indicate_na for transcript vars"
+git add R/fit.R    && git commit -m "expand tuning grid from 10 to 20 points"
+```
+
+**Use `.gitignore` deliberately:**
+
+```
+# .gitignore — what NOT to track
+
+# Sensitive / restricted data
+data/raw/
+data/processed/
+
+# Reproducible artifacts (can be regenerated by pipeline)
+_targets/
+outputs/models/
+
+# Machine-specific / large
+renv/library/
+.Rhistory
+.DS_Store
+```
+
+The `.gitignore` is itself a form of documentation — it communicates which
+files are inputs (tracked) and which are outputs (regenerated).
+
+---
+
+# 5. The `{targets}` Pipeline
+
+`{targets}` is an R package for defining **dependency-aware analysis
+pipelines**. It is the modern successor to `{drake}` and the R equivalent
+of tools like `make` or `snakemake` in other languages.
+
+## 5.1 The Core Idea
+
+A `targets` pipeline is a list of **targets** — named objects that are
+produced by functions. Each target declares what it depends on. `targets`
+builds a directed acyclic graph (DAG) of dependencies and runs only what
+needs to run.
+
+```r
+# _targets.R — minimal example
+library(targets)
+tar_source("R/")    # loads all functions from R/
+
+list(
+  tar_target(raw_data,      load_data("data/raw/els.dta")),
+  tar_target(clean_data,    wrangle(raw_data)),        # depends on raw_data
+  tar_target(model_fit,     fit_model(clean_data)),    # depends on clean_data
+  tar_target(performance,   evaluate(model_fit))       # depends on model_fit
+)
+```
+
+When you run `tar_make()`, targets:
+
+1. Checks which targets are out of date (because their function changed,
+   their dependencies changed, or they have never been run)
+2. Runs only those targets, in dependency order
+3. Caches every result to `_targets/`
+
+Change the recipe and re-run `tar_make()`: only the recipe, model, and
+evaluation targets re-run. The data loading and wrangling targets are
+already cached and are skipped.
+
+## 5.2 Visualizing the Pipeline
+
+```r
+library(targets)
+tar_visnetwork()    # opens an interactive DAG in the viewer
+```
+
+This is one of `targets`' most valuable features. The DAG makes the
+dependency structure of your analysis explicit and visible. It is also
+useful for communicating the analysis to collaborators and reviewers.
+
+```r
+tar_manifest()      # tabular view of all targets and their commands
+tar_outdated()      # which targets need to be rerun
+tar_progress()      # status of each target after tar_make()
+```
+
+## 5.3 Reading Targets in the Paper
+
+In `paper.Rmd` and `appendix.Rmd`, use `tar_read()` and `tar_load()` to
+access cached targets. No computation happens in the paper — these calls
+simply retrieve already-computed objects from the `_targets/` cache.
+
+```r
+# Load a single object into the environment
+tar_load(performance_metrics)
+
+# Read a single object without loading into environment
+acc <- tar_read(performance_metrics) %>%
+  filter(.metric == "accuracy") %>%
+  pull(.estimate)
+
+# Reference inline
+```
+
+The result: **every number in the paper is live**. Change the model, rerun
+`tar_make()`, re-render the paper — every inline number, table, and figure
+updates automatically.
+
+## 5.4 File Targets
+
+Some targets produce files rather than R objects — figures, saved model
+weights, CSV exports. These use `format = "file"` and the function must
+return the file path:
+
+```r
+# In _targets.R
+tar_target(
+  fig_vip,
+  plot_vip(vip_scores),   # function saves the file and returns the path
+  format = "file"          # targets tracks the file, not an R object
+)
+
+# In R/visualize.R
+plot_vip <- function(vip_scores) {
+  p <- vip_scores %>% ggplot(aes(...)) + ...
+  path <- here::here("outputs", "figures", "fig4_vip.png")
+  ggsave(path, p)
+  path   # return the path so targets can track it
+}
+```
+
+With `format = "file"`, targets will re-run the target if the file is
+deleted or if the function changes — even if the upstream targets are
+unchanged.
+
+## 5.5 Rendering the Paper as a Target
+
+```r
+# In _targets.R
+tar_render(
+  paper,
+  here::here("paper", "paper.Rmd"),
+  output_dir = here::here("paper")
+)
+```
+
+`tar_render()` is a `{tarchetypes}` function that treats the Rmd rendering
+as a target. It automatically detects which targets are called via
+`tar_read()` and `tar_load()` inside the Rmd and adds them as dependencies.
+If any of those targets change, the paper target becomes outdated and will
+re-render on the next `tar_make()`.
+
+---
+
+# 6. Organizing for Development
+
+A project structure that is correct for a finished product may be clunky to
+develop in. Here we discuss how to work with this structure iteratively.
+
+## 6.1 The `fit_model` Flag Pattern
+
+Fitting neural networks is slow. During development you don't want to refit
+every time you change a figure. Use a boolean flag at the top of your
+targets plan:
+
+```r
+# _targets.R
+fit_model <- FALSE   # set to TRUE when you want to refit
+
+list(
+  ...,
+  tar_target(
+    tuning_results,
+    if (fit_model) {
+      tune_model(els_workflow, els_folds, tuning_grid)
+    } else {
+      tar_read(tuning_results)   # load from cache without refitting
+    }
+  ),
+  ...
+)
+```
+
+This is the same pattern we use in lecture Rmds. It lets you iterate on
+downstream targets (figures, tables, the paper) without paying the cost of
+refitting.
+
+## 6.2 Interactive Development vs. Pipeline Development
+
+During development, you often want to run code interactively — not via
+`tar_make()`. The two modes coexist cleanly if your functions have no side
+effects:
+
+```r
+# Interactive development session
+tar_load(els_train)          # load the cached training data
+tar_load(els_recipe)         # load the cached recipe
+
+# Now you can call functions interactively
+rec_prepped <- prep(els_recipe, training = els_train)
+baked       <- bake(rec_prepped, new_data = NULL)
+glimpse(baked)               # inspect without running the full pipeline
+```
+
+The discipline: once your interactive exploration leads to a working
+function, move it into `R/` and wire it into `_targets.R`. Never leave
+important logic living only in an interactive session.
+
+## 6.3 Branching for Experiments
+
+When you want to try a modeling variant without breaking the main pipeline,
+use a separate targets branch rather than commenting out code:
+
+```r
+# In _targets.R — compare two model architectures
+list(
+  ...,
+  tar_target(model_spec_base,  build_model_spec(layers = 2)),
+  tar_target(model_spec_deep,  build_model_spec(layers = 4)),
+  tar_target(fit_base,         fit_final_model(workflow_base, els_split)),
+  tar_target(fit_deep,         fit_final_model(workflow_deep, els_split)),
+  tar_target(comparison,       compare_fits(fit_base, fit_deep))
+)
+```
+
+Both fits live in the cache. You can load either interactively. The paper
+targets whichever one you wire it to.
+
+## 6.4 What to Commit When
+
+A simple rule: **commit the code, not the cache**.
+
+```bash
+# After every meaningful code change
+git add R/recipe.R
+git commit -m "add missingness indicators to recipe"
+
+# After updating packages
+renv::snapshot()
+git add renv.lock
+git commit -m "snapshot renv after adding kableExtra"
+
+# Never commit
+_targets/           # cache — large, machine-specific, regenerated by pipeline
+outputs/models/     # same reasoning
+data/raw/           # restricted-use data
+```
+
+The `renv.lock` and `R/` files together are sufficient for a collaborator
+to reproduce every result from scratch.
+
+---
+
+# 7. Putting It Together: The Full Workflow
+
+Here is the complete sequence for starting a new project from scratch,
+incorporating everything from this lecture.
+
+## Step 1: Create the GitHub repo
+
+Go to GitHub. New repository. Name it. Add a `README`. Do not add code.
+
+## Step 2: Clone and open
+
+```bash
+git clone https://github.com/yourusername/predict_major.git
+cd predict_major
+# Open in RStudio: File → Open Project → browse to folder
+```
+
+## Step 3: Initialize infrastructure
+
+```r
+# In R console
+install.packages(c("renv", "here", "targets", "tarchetypes"))
+
+# Initialize renv
+renv::init()
+
+# Confirm here anchoring (after creating DESCRIPTION)
+here::i_am("DESCRIPTION")
+```
+
+## Step 4: Create the directory structure
+
+```r
+# Create all directories
+dirs <- c(
+  "R",
+  "paper",
+  "data/raw", "data/processed", "data/codebook",
+  "outputs/figures", "outputs/tables", "outputs/models"
+)
+purrr::walk(dirs, ~ dir.create(here::here(.x), recursive = TRUE, showWarnings = FALSE))
+```
+
+## Step 5: Write and commit the conventions
+
+Write the `README.md` with a conventions section before writing any analysis
+code. Commit it:
+
+```bash
+git add README.md DESCRIPTION .gitignore .Rprofile
+git commit -m "initialize project infrastructure and conventions"
+```
+
+## Step 6: Stub `_targets.R`
+
+Write `_targets.R` with all target names and their dependencies defined, but
+with stub functions that return `NULL`. This defines the shape of the pipeline
+before any function bodies exist:
+
+```r
+# Stub approach: define the DAG first
+list(
+  tar_target(els_raw,        load_els(raw_data_path)),       # not written yet
+  tar_target(analytic_sample, make_analytic_sample(els_raw)), # not written yet
+  ...
+)
+```
+
+Commit the stub pipeline:
+
+```bash
+git add _targets.R
+git commit -m "stub pipeline DAG — all target names and dependencies defined"
+```
+
+## Step 7: Fill in functions, one file at a time
+
+Work through `R/` files in pipeline order: `wrangle.R` → `recipe.R` →
+`model.R` → `fit.R` → `evaluate.R` → `importance.R` → `visualize.R` →
+`tables.R`. After each file, run `tar_make()` to check that the pipeline
+runs to that point. Commit:
+
+```bash
+git add R/wrangle.R
+git commit -m "implement load_els, wrangle_els, make_analytic_sample"
+```
+
+## Step 8: Write the paper last
+
+Only after `tar_make()` runs cleanly to the `tables` and `figures` targets
+should you open `paper.Rmd`. By then, every `tar_read()` call has a real
+object behind it and the paper renders on the first attempt.
+
+---
+
+# 8. Face Validity Checks Throughout
+
+At each stage of the pipeline, build in a face validity check before moving
+on. These are quick, informal checks that something is roughly right — not
+formal tests, but also not blind faith.
+
+```r
+# After wrangling
+analytic_sample %>% count(cip2) %>% print(n = Inf)        # expected: ~15-25 categories
+analytic_sample %>% summarise(n = n())                     # expected: several thousand
+analytic_sample %>% summarise(across(everything(), ~ mean(is.na(.x)))) # spot missing
+
+# After recipe
+recipe_check$n_predictors   # expected: substantially more than raw vars (due to one-hot)
+recipe_check$n_rows         # expected: same as nrow(els_train)
+
+# After tuning
+collect_metrics(tuning_results) %>%
+  filter(.metric == "roc_auc") %>%
+  arrange(desc(mean))      # expected: best > chance (1/n_classes)
+
+# After final fit
+performance_metrics        # does accuracy exceed the null classifier?
+```
+
+The null classifier — always predicting the most common class — sets the
+floor. A model that does not clearly beat the null classifier is not useful,
+regardless of how sophisticated the architecture is.
+
+---
+
+# Summary
+
+| Principle | Implementation |
+|---|---|
+| Start with GitHub | Create repo first; clone before writing code |
+| Document conventions | `README.md` conventions section before analysis |
+| Separate concerns | `R/` for functions, `_targets.R` for plan, `paper/` for narrative |
+| Reproducible environments | `renv` for packages, `here` for paths |
+| Dependency-aware pipelines | `{targets}` tracks what needs to rerun |
+| Thin papers | `paper.Rmd` uses only `tar_read()`, never computes |
+| Commit strategically | Code and `renv.lock` yes; cache and data no |
+| Check face validity | At every pipeline stage, before moving on |
+
+---
+
+# Further Reading
+
+- Marwick, B., Boettiger, C., & Mullen, L. (2018). Packaging data analytical
+  work reproducibly using R (and friends). *The American Statistician*, 72(1),
+  80–88. https://doi.org/10.1080/00031305.2017.1375986
+
+- Landau, W. M. (2021). The targets R package: A dynamic Make-like
+  function-oriented pipeline toolkit for reproducibility and
+  high-performance computing. *Journal of Open Source Software*, 6(57),
+  2959. https://doi.org/10.21105/joss.02959
+
+- Bryan, J. (2017). *Project-oriented workflow*.
+  https://www.tidyverse.org/blog/2017/12/workflow-vs-script/
+
+- Kuhn, M., & Silge, J. (2022). *Tidy modeling with R*.
+  https://www.tmwr.org
+
+- The targets manual: https://books.ropensci.org/targets/
