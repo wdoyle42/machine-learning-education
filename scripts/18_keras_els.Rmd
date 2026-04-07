@@ -13,7 +13,7 @@ knitr::opts_chunk$set(
 )
 
 # Set to FALSE after first run to skip expensive computations
-fit_model <- TRUE
+fit_model <- FALSE
 ```
 
 ## Overview
@@ -231,8 +231,8 @@ saveRDS(analytic_sample, here("analytic_sample.rds"))
 ```
 
 ```{r load-analytic-sample, eval=!fit_model}
-analytic_sample <- readRDS(here("scripts","analytic_sample.rds"))
-cip_labels      <- readr::read_csv(here("scripts","cip2_labels.csv"),
+analytic_sample <- readRDS(here::here("analytic_sample.rds"))
+cip_labels      <- read_csv(here("scripts","cip2_labels.csv"),
                                    show_col_types = FALSE)
 ```
 
@@ -539,12 +539,11 @@ through engine arguments:
 
 ```{r lr-engine-arg, eval=FALSE}
 # Advanced: custom learning rate via engine argument
-#mlp() %>%
-#  set_engine(
-#    "keras",
-#    optimizer = keras::optimizer_adam(learning_rate = 0.0005)
-#  )%>%
-#  set_mode("classification")
+mlp(...) %>%
+  set_engine(
+    "keras",
+    optimizer = keras::optimizer_adam(learning_rate = 0.0005)
+  )
 ```
 
 ---
@@ -699,12 +698,14 @@ best_params
 
 # Finalize the workflow with the best hyperparameter values
 final_workflow <- finalize_workflow(els_workflow, best_params)
+
+
 ```
 
 `last_fit()` fits the finalized model on the **full training set** and evaluates
 it on the held-out **test set**. This is the only time the test set is touched.
 
-```{r final-fit, eval=fit_model}
+```{r final-fit}
 set.seed(2002)
 final_fit <- last_fit(
   final_workflow,
@@ -712,11 +713,17 @@ final_fit <- last_fit(
   metrics = metric_set(roc_auc, accuracy, mn_log_loss)
 )
 
-saveRDS(final_fit, here("scripts","final_fit.rds"))
+# Save fit for prediction later-- some weirdness with keras
+fitted_wf <- extract_workflow(final_fit)
+
+
+#saveRDS(final_fit, here("scripts","final_fit.rds"))
 ```
 
 ```{r load-final-fit, eval=!fit_model}
-final_fit <- readRDS(here("scripts","final_fit.rds"))
+#final_fit <- readRDS(here("scripts","final_fit.rds"))
+
+
 ```
 
 ---
@@ -725,7 +732,7 @@ final_fit <- readRDS(here("scripts","final_fit.rds"))
 
 ### Why ROC AUC for an Imbalanced Multinomial Outcome?
 
-As we'Accuracy is a poor metric here. If Business majors make up 25% of the sample,
+Accuracy is a poor metric here. If Business majors make up 25% of the sample,
 a classifier that always predicts "Business" achieves 25% accuracy — not
 meaningfully worse than a model that actually learned something. ROC AUC
 sidesteps this by evaluating the model's ability to *rank* classes, not just
@@ -791,76 +798,144 @@ per_class %>%
   kable_styling(bootstrap_options = c("striped", "condensed"))
 ```
 
-```{r per-class-by-major}
-# Per-class F1 broken out by major
-class_metrics_by_major <- metric_set(
-  yardstick::precision,
-  yardstick::recall,
-  yardstick::f_meas
-)(test_preds,
-  truth    = cip2,
-  estimate = .pred_class,
-  estimator = "macro_weighted") %>%
-  left_join(
-    label_lookup %>% mutate(cip2_collapsed_code = as.character(cip2_collapsed_code)),
-    by = join_by(.level == cip2_collapsed_code)
-  )
-```
-
 ---
 
 ## Variable Importance
 
-Keras models do not have interpretableresults. This is the tradeoff for the nonlinearity. We recover feature importance
+Keras models do not have interpretable coefficients — there is no `coef()`
+method. This is the tradeoff for the nonlinearity. We recover feature importance
 via **permutation**: for each predictor, we shuffle its values across all
-observations, generate new predictions, and measure how much the model's ROC AUC
-drops. A large drop means the model relied heavily on that feature.
+observations, generate new predictions, and measure how much the model's
+macro-weighted ROC AUC drops. A large drop means the model relied heavily on
+that feature.
 
-```{r vip, eval=fit_model}
-fitted_wf <- extract_workflow(final_fit)
+**Permutation importance** is the standard approach for interpreting models — like neural networks — that have no coefficients to read off directly.
 
-pred_fun <- function(object, newdata) {
-  predict(object, newdata, type = "prob") %>% as.matrix()
+The core idea is to ask: *how much does the model's performance degrade when it can no longer use a particular feature?* We operationalize this by destroying the feature's information content without changing the shape of the data. Rather than removing the column entirely (which would break the model's input dimensions), we shuffle its values randomly across all observations. This severs the relationship between that feature and the outcome while leaving everything else intact.
+
+Concretely, for each predictor we:
+
+1. Start with a **baseline** — run the fitted model on a held-out sample and record its macro-weighted ROC AUC. This is the model's performance when it has full access to all features.
+
+2. **Permute** — randomly reorder the values of one predictor column, so that each student now has some other student's value for that variable. The model still sees a number in that column; it just no longer carries real information about that student.
+
+3. **Re-score** — run the model again on the permuted data and record the new AUC.
+
+4. **Importance = baseline AUC − permuted AUC.** If the feature mattered, the model's ability to rank students by their true major deteriorates noticeably. If the feature was irrelevant or redundant, the AUC barely changes.
+
+We repeat steps 2–4 five times (`nsim = 5`) for each feature and average the drops, because any single shuffle is one random draw — averaging over several gives a more stable estimate.
+
+**Why ROC AUC specifically?** Because our outcome is multinomial and imbalanced. Accuracy would be dominated by the most common major categories. Macro-weighted AUC evaluates the model's ability to discriminate each class from all others, weighted by class frequency, so every major field contributes to the score roughly in proportion to how many students are in it.
+
+**Why a 75% sample rather than the full training set?** Purely for speed — we are running hundreds of predict calls (one per feature per simulation). The 75% sample is drawn once and held fixed across all permutations so that the baseline and every permuted AUC are computed on exactly the same rows, making the differences comparable.
+
+**What the numbers mean:** An importance of 0.03 means permuting that feature caused macro-weighted AUC to drop by about 3 percentage points on average. A feature near zero had essentially no effect when scrambled — either the model wasn't using it, or its information was fully recoverable from correlated predictors that remained intact.
+
+`vip::vi_permute()` does not support multiclass probability metrics — its
+`metric` argument passes vectors to a scalar function, but `roc_auc_vec()` for
+multiclass requires a full probability matrix. We therefore implement the loop
+directly, which is only slightly more code and makes the algorithm completely
+transparent.
+
+The logic is:
+
+1. Get a baseline AUC on a 75% sample of the training data.
+2. For each predictor column, shuffle its values (breaking the predictor-outcome
+   association), predict, compute AUC, and record the drop from baseline.
+3. Repeat `nsim` times and average the drops.
+
+```{r vip-helpers}
+# Compute macro-weighted ROC AUC from a fitted workflow and a data frame.
+# Returns a single scalar.
+compute_auc <- function(fitted_wf, data) {
+  probs <- predict(fitted_wf, data, type = "prob")
+  truth <- data[["cip2"]]
+
+  bind_cols(probs, tibble(cip2 = truth)) %>%
+    roc_auc(
+      truth     = cip2,
+      matches("^\\.pred_"),       # <-- regex match works inside functions
+      estimator = "macro_weighted"
+    ) %>%
+    pull(.estimate)
 }
-
-metric_fun <- function(actual, predicted) {
-  yardstick::roc_auc_vec(
-    truth     = actual,
-    estimate  = predicted,
-    estimator = "macro_weighted"
-  )
+# Permutation importance for a single predictor column.
+# Returns the mean AUC drop across nsim permutations.
+permute_one <- function(fitted_wf, data, col, nsim) {
+  map_dbl(seq_len(nsim), function(i) {
+    permuted <- data %>%
+      mutate(across(all_of(col), sample))
+    baseline_auc - compute_auc(fitted_wf, permuted)
+  }) %>%
+    mean()
 }
-
-set.seed(2002)
-vip_scores <- vi_permute(
-  object             = fitted_wf,
-  train              = els_train,
-  target             = "cip2",
-  metric             = metric_fun,
-  smaller_is_better  = FALSE,
-  pred_wrapper       = pred_fun,
-  nsim               = 5,       # average over 5 permutations per feature
-  sample_frac        = 0.75     # use 75% of training data per permutation
-) %>%
-  slice_max(Importance, n = 30) %>%
-  arrange(desc(Importance))
-
-saveRDS(vip_scores, here::here("data/processed/vip_scores.rds"))
 ```
 
+
+```{r vip}
+# Pull the raw prob matrix once per permutation at the top level,
+# rather than calling predict() inside a helper function.
+
+set.seed(2002)
+vip_sample <- els_train %>% slice_sample(prop = 0.75)
+
+# Baseline: predict once at top level, score it
+baseline_probs <- augment(fitted_wf, vip_sample)
+
+score_auc <- function(df) {
+  df %>%
+    roc_auc(
+      truth     = cip2,
+      matches("^\\.pred_(?!class)",perl=TRUE),
+      estimator = "macro_weighted"
+    ) %>%
+    pull(.estimate)
+}
+
+baseline_auc <- score_auc(baseline_probs)
+cat("Baseline AUC:", round(baseline_auc, 4), "\n")
+
+pred_cols <- names(baseline_probs) %>% keep(~ startsWith(.x, ".pred_"))
+non_pred_cols <- c(
+  "cip2", "stu_id", "bysex", "byrace",
+  "f3tzbch1cip2", "cip2_collapsed_code", "cip2_collapsed_label",
+  ".pred_class", pred_cols
+)
+pred_features <- setdiff(names(vip_sample), non_pred_cols)
+
+# For each feature: permute in vip_sample, re-augment at top level, score
+permute_one <- function(col, nsim = 5) {
+  map_dbl(seq_len(nsim), function(i) {
+    permuted_data <- vip_sample %>%
+      mutate(across(all_of(col), sample))
+    permuted_probs <- augment(fitted_wf, permuted_data)
+    baseline_auc - score_auc(permuted_probs)
+  }) %>% mean()
+}
+
+vip_scores <- tibble(Variable = pred_features) %>%
+  mutate(Importance = map_dbl(Variable, permute_one)) %>%
+  arrange(desc(Importance))
+
+write_rds(vip_scores,file=here("scripts","vip_scores.rds"))
+```
+
+
+
 ```{r load-vip, eval=!fit_model}
-vip_scores <- readRDS(here::here("data/processed/vip_scores.rds"))
+vip_scores <- readRDS(here("scripts","vip_scores.rds"))
 ```
 
 ```{r vip-plot, fig.height=8}
 vip_scores %>%
+  slice_max(Importance, n = 30) %>%
   mutate(Variable = fct_reorder(Variable, Importance)) %>%
   ggplot(aes(x = Importance, y = Variable)) +
   geom_col(fill = "#2C7BB6", alpha = 0.85) +
   labs(
     title    = "Permutation-Based Variable Importance (Top 30)",
-    subtitle = "Mean decrease in macro-weighted AUC from permuting each feature (5 sims)",
-    x        = "Importance",
+    subtitle = "Mean decrease in macro-weighted ROC AUC from permuting each feature (5 sims, 75% sample)",
+    x        = "Mean AUC drop",
     y        = NULL
   ) +
   theme_els()
@@ -910,6 +985,6 @@ In the next lecture we will take the fitted model and use it for **subgroup
 analysis** by race and gender — the variables we deliberately withheld from
 the predictor set. We will look at whether the model's errors are distributed
 evenly across groups or concentrated in particular subpopulations, and discuss
-what that means for questions of algorithmic fairness in educational contexts.We'll also incorporate conformal prediction intervals to examine the accuracy of predictions in different contexts. 
+what that means for questions of algorithmic fairness in educational contexts.
 
-
+---
