@@ -1,6 +1,6 @@
 ---
 title: "Lecture 18: Multinomial Classification with Keras and ELS:2002"
-output: github_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -231,7 +231,7 @@ saveRDS(analytic_sample, here("analytic_sample.rds"))
 ```
 
 ```{r load-analytic-sample, eval=!fit_model}
-analytic_sample <- readRDS(here::here("analytic_sample.rds"))
+analytic_sample <- readRDS(here("scripts","analytic_sample.rds"))
 cip_labels      <- read_csv(here("scripts","cip2_labels.csv"),
                                    show_col_types = FALSE)
 ```
@@ -562,7 +562,7 @@ els_workflow <- workflow() %>%
 
 ### Tuning Grid
 
-We use a **space-filling Latin hypercube** design. Rather than an exhaustive
+We'll use a space-filling Latin hypercube design. Rather than an exhaustive
 grid (which scales as $k^p$ where $k$ is levels and $p$ is parameters), a
 space-filling design spreads points evenly across the hyperparameter space,
 giving much better coverage with far fewer evaluations.
@@ -688,8 +688,6 @@ collect_metrics(tuning_results) %>%
   kable_styling(bootstrap_options = "condensed")
 ```
 
----
-
 ## Selecting Best Parameters and Final Fit
 
 ```{r select-best}
@@ -698,8 +696,6 @@ best_params
 
 # Finalize the workflow with the best hyperparameter values
 final_workflow <- finalize_workflow(els_workflow, best_params)
-
-
 ```
 
 `last_fit()` fits the finalized model on the **full training set** and evaluates
@@ -716,17 +712,13 @@ final_fit <- last_fit(
 # Save fit for prediction later-- some weirdness with keras
 fitted_wf <- extract_workflow(final_fit)
 
-
 #saveRDS(final_fit, here("scripts","final_fit.rds"))
 ```
 
 ```{r load-final-fit, eval=!fit_model}
 #final_fit <- readRDS(here("scripts","final_fit.rds"))
-
-
 ```
 
----
 
 ## Evaluation
 
@@ -765,20 +757,73 @@ glimpse(test_preds)
 
 ### Confusion Matrix
 
-```{r confusion-matrix, fig.width=8, fig.height=7}
-conf_mat(test_preds, truth = cip2, estimate = .pred_class) %>%
-  autoplot(type = "heatmap") +
-  scale_fill_gradient(low = "white", high = "#2C7BB6") +
-  labs(
-    title    = "Confusion Matrix — Test Set Predictions",
-    subtitle = "Rows: true class  |  Columns: predicted class"
+```{r confusion-matrix, fig.width=10, fig.height=9}
+# Build a tidy confusion matrix with human-readable major labels on both axes.
+# autoplot() only shows the numeric cip2 factor levels, so we do this manually.
+#
+# Row-normalise so the diagonal reads as recall per class — more informative
+# than raw counts when class sizes differ substantially.
+
+all_codes <- levels(test_preds$cip2)
+
+ordered_labels <- label_lookup %>%
+  filter(as.character(cip2_collapsed_code) %in% all_codes) %>%
+  arrange(match(as.character(cip2_collapsed_code), all_codes)) %>%
+  pull(cip2_collapsed_label) %>%
+  str_wrap(width = 22)
+
+test_preds %>%
+  count(truth = cip2, predicted = .pred_class, .drop = FALSE) %>%
+  group_by(truth) %>%
+  mutate(row_pct = n / sum(n)) %>%
+  ungroup() %>%
+  left_join(
+    label_lookup %>%
+      mutate(truth_label = str_wrap(cip2_collapsed_label, width = 22)) %>%
+      select(cip2_collapsed_code, truth_label),
+    by = join_by(truth == cip2_collapsed_code)
+  ) %>%
+  left_join(
+    label_lookup %>%
+      mutate(pred_label = str_wrap(cip2_collapsed_label, width = 22)) %>%
+      select(cip2_collapsed_code, pred_label),
+    by = join_by(predicted == cip2_collapsed_code)
+  ) %>%
+  mutate(
+    truth_label = factor(truth_label, levels = ordered_labels),
+    pred_label  = factor(pred_label,  levels = ordered_labels)
+  ) %>%
+  ggplot(aes(x = pred_label, y = fct_rev(truth_label), fill = row_pct)) +
+  geom_tile(color = "white", linewidth = 0.35) +
+  geom_text(
+    aes(label = ifelse(n > 0, as.character(n), "")),
+    size = 2.5, color = "grey20"
   ) +
-  theme_els() +
+  scale_fill_gradient(
+    low    = "white",
+    high   = "#2C7BB6",
+    limits = c(0, 1),
+    labels = scales::percent_format(accuracy = 1),
+    name   = "Row %\n(recall)"
+  ) +
+  scale_x_discrete(position = "top") +
+  labs(
+     title    = "Confusion Matrix — Test Set Predictions",
+    subtitle = "Rows: true class  |  Columns: predicted class",
+    x        = NULL,      # <-- remove x title, it's creating the gap
+    y        = "True major"
+  ) +
+   coord_cartesian(clip = "off") +
+    theme_els() +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
-    axis.text.y = element_text(size = 8)
+    axis.text.x      = element_text(angle = -40, hjust = 1, size = 7),
+    axis.text.y      = element_text(size = 7),
+    legend.position  = "right",
+    legend.key.width = unit(0.4, "cm"),
+    plot.margin      = margin(t = 2, r = 5, b = 5, l = 5, unit = "mm")  # <-- tighten top
   )
 ```
+
 
 ### Per-Class Precision, Recall, and F1
 
