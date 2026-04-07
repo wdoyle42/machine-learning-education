@@ -42,7 +42,7 @@ For at least one visually similar pair (e.g., b and d, or i and j), display the 
 
 ## Step 3: Fit a Neural Network in tidymodels
 
-Fit a neural network to the  EMNIST letters data using the tidymodels / brulee workflow from lecture 16.
+The overall goal here is to fit a neural network to the  EMNIST letters data using the tidymodels / brulee workflow from lecture 16.
 
 ### 3.1 Split the data
 
@@ -93,10 +93,6 @@ Finalize the workflow with the best parameters and use `last_fit()` to fit on th
 Report overall accuracy, ROC AUC (macro-weighted), and mean log loss on the test set.
 Compare accuracy to the null classifier baseline (always predicting the most common letter in the training set).
 
-```{r metrics}
-# Your code here — collect_metrics(final_res)
-# Compute null classifier baseline from training data
-```
 
 **Discussion (2–3 sentences):** How does the model perform relative to the null classifier?
 Is this level of accuracy sufficient for a real-world handwriting recognition application?
@@ -107,81 +103,23 @@ Why or why not?
 Produce a confusion matrix heatmap for the test set predictions.
 Label the axes with the actual letter names (a–j), not numeric codes.
 
-```{r confusion-matrix}
-# Your code here
-```
-
 **Discussion:** Identify the two or three most commonly confused letter pairs in the confusion matrix.
 In 3–4 sentences, explain why those specific pairs are confused and what this tells you about the features the network is (or isn't) learning.
 
 ---
 
-## Step 5: Regularization Effects
 
-### 5.1 Simulate regularization on synthetic data
-
-Using the `train_network()` function from lecture 16, train three versions of a network on the synthetic 10-class, 784-input data from Step 2:
-
-1. No regularization (`lambda = 0`, `drop_rate = 0`)
-2. L2 regularization (`lambda = 0.01`, `drop_rate = 0`)
-3. Dropout regularization (`lambda = 0`, `drop_rate = 0.4`)
-
-```{r simulate-reg}
-# Your code here — copy train_network() from lecture 16
-```
-
-### 5.2 Weight distribution plot
-
-Reproduce the W1 weight histogram from lecture 16, comparing the three regularization conditions.
-
-```{r weight-hist}
-# Your code here
-```
-
-**Discussion (2–3 sentences):** How do L2 regularization and dropout affect the distribution of learned weights differently?
-Which condition produces the narrowest weight distribution, and why does L2 have this effect mathematically?
-
-### 5.3 Weight magnitude by layer
-
-Reproduce the mean absolute weight magnitude bar chart from lecture 16, comparing all three conditions across both layers (W1 and W2).
-
-```{r weight-magnitude}
-# Your code here
-```
-
-**Discussion (2–3 sentences):** Does regularization affect W1 and W2 similarly, or does it have a stronger effect on one layer?
-What does this suggest about where in the network regularization has the most impact?
-
----
-
-## Step 6: Conceptual Questions
+## Step 5: Conceptual Questions
 
 Answer each question in 3–5 sentences.
 
-**6.1** Explain in your own words why dropout acts as an implicit ensemble method.
+**5.1** Explain in your own words why dropout acts as an implicit ensemble method.
 What is the connection between randomly silencing neurons during training and averaging over many different network architectures?
 
-**6.2** In lecture 15 we saw that gradients in layers closer to the input tend to be smaller than gradients in layers closer to the output.
-Why does this happen, and what is the term for the extreme version of this phenomenon in very deep networks?
 
-**6.3** The EMNIST letters task (a–j) is generally considered harder than the digits task (0–9).
+**5.2** The EMNIST letters task (a–j) is generally considered harder than the digits task (0–9).
 Based on what you observed in the confusion matrix and the visualizations in Step 1, give a specific mechanistic reason — in terms of pixel-level features — for why letter classification is more difficult.
 
-**6.4** Cross-entropy loss heavily penalizes confident but incorrect predictions.
+**5.3** Cross-entropy loss heavily penalizes confident but incorrect predictions.
 A model that assigns 1% probability to the correct class incurs a loss of approximately 4.6, while a model that assigns 95% probability to the correct class incurs a loss of approximately 0.05.
 Why is this asymmetry desirable when training a classifier?
-What would go wrong if we used mean squared error instead?
-
----
-
-## Submission Checklist
-
-Before submitting, confirm that your rendered document includes:
-
-- [ ] Pixel visualization for all 10 letters (at least 2 examples each)
-- [ ] All four backpropagation visualizations from Step 2 with written interpretations
-- [ ] Tuning results for both the dropout and L2 workflows
-- [ ] Confusion matrix with letter labels on both axes
-- [ ] Weight distribution histogram and magnitude bar chart
-- [ ] Written responses to all four conceptual questions
-- [ ] `fit_model <- FALSE` set for all expensive chunks so the document renders quickly
