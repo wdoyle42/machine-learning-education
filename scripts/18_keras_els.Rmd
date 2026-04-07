@@ -244,6 +244,37 @@ label_lookup <- cip_labels %>%
   distinct() %>%
   mutate(cip2_collapsed_code = as.factor(cip2_collapsed_code))
 
+short_labels <- c(
+  "Agriculture & Natural Resources" = "Agriculture",
+  "Architecture"                    = "Architecture",
+  "Arts"                            = "Arts",
+  "Biological & Biomedical Sciences"= "Bio & Biomed Sci",
+  "Business & Management"           = "Business",
+  "Communications & Journalism"     = "Communications",
+  "Computer & Information Sciences" = "Computer & Info Sci",
+  "Education"                       = "Education",
+  "Engineering"                     = "Engineering",
+  "English"                         = "English",
+  "Foreign Languages"               = "Foreign Languages",
+  "Health Professions"              = "Health Professions",
+  "History"                         = "History",
+  "Legal Studies"                   = "Legal Studies",
+  "Liberal Arts & General Studies"  = "Liberal Arts",
+  "Mathematics & Statistics"        = "Math & Statistics",
+  "Other"                           = "Other",
+  "Parks Recreation & Fitness"      = "Parks, Rec & Fit",
+  "Philosophy & Religious Studies"  = "Philosophy & Religion",
+  "Physical Sciences"               = "Physical Sciences",
+  "Psychology"                      = "Psychology",
+  "Public Administration"           = "Public Admin",
+  "Security & Protective Services"  = "Security & Protective",
+  "Social Sciences"                 = "Social Sciences"
+)
+
+label_lookup <- label_lookup %>%
+  mutate(cip2_collapsed_label = recode(cip2_collapsed_label, !!!short_labels))
+
+
 analytic_sample %>%
   count(cip2) %>%
   mutate(pct = n / sum(n)) %>%
@@ -816,8 +847,8 @@ test_preds %>%
    coord_cartesian(clip = "off") +
     theme_els() +
   theme(
-    axis.text.x      = element_text(angle = -40, hjust = 1, size = 7),
-    axis.text.y      = element_text(size = 7),
+    axis.text.x      = element_text(angle = -40, hjust = 1, size = 5),
+    axis.text.y      = element_text(size = 5),
     legend.position  = "right",
     legend.key.width = unit(0.4, "cm"),
     plot.margin      = margin(t = 2, r = 5, b = 5, l = 5, unit = "mm")  # <-- tighten top
