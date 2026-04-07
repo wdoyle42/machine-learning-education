@@ -1,0 +1,851 @@
+---
+title: "Lecture 19: Subgroup Analysis and Algorithmic Fairness"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  warning   = FALSE,
+  message   = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+
+# Set to FALSE after first run to skip expensive computations
+fit_model <- FALSE
+```
+
+## Overview
+
+In Lecture 18 we fit a multinomial neural network to predict college major
+field of study from ELS:2002, and we made one deliberate design choice: **race
+and gender were withheld as predictors**. We assigned them the role `"subgroup"`
+in the recipe and left them entirely out of the model matrix.
+
+Today we use them — not as predictors, but as lenses for evaluating what the
+model learned. This is called **subgroup analysis**, and it is the standard
+first step in auditing a predictive model for disparate impact. The core
+question is not whether the model is accurate on average, but whether its
+errors are evenly distributed across groups or concentrated in particular
+populations.
+
+By the end of this lecture you will be able to:
+
+1. Recover subgroup identifiers from the test set and join them to model
+   predictions.
+2. Decompose overall performance metrics by race, gender, and the intersection
+   of the two.
+3. Visualize and interpret disparities in accuracy, ROC AUC, precision, recall,
+   and calibration.
+4. Distinguish between different formal definitions of fairness and explain why
+   they cannot all hold simultaneously.
+
+
+---
+
+## Setup and Libraries
+
+```{r libraries}
+library(tidyverse)
+library(haven)
+library(here)
+library(janitor)
+library(tidymodels)
+library(kableExtra)
+library(patchwork)  # composing multi-panel plots
+```
+
+```{r theme}
+theme_els <- function() {
+  theme_minimal(base_size = 11) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 12),
+      plot.subtitle = element_text(color = "grey40", size = 10),
+      axis.title    = element_text(size = 10),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank()
+    )
+}
+```
+
+---
+
+## Recap: Why We Withheld Race and Gender
+
+Recall from Lecture 18:
+
+- **Data leakage prevention** was the primary motivation for excluding declared
+  major. Race and gender are different — there is no temporal leakage issue.
+- **Design choice**: we chose not to use them as predictors because we want
+  the model's predictions to be based on academic preparation, attitudes, and
+  postsecondary behavior — not identity characteristics.
+- **Subgroup analysis role**: by withholding them from the predictor set, we
+  can ask a clean counterfactual question: *does a model that never saw race
+  or gender still produce predictions that vary systematically by those
+  characteristics?*
+
+If the answer is yes — and it typically is — that tells us something important
+about what the model actually learned, and about the structure of the data it
+was trained on.
+
+This connects directly to the case studies you worked through in Lecture 13.
+In Case Study 1 (enrollment prediction), you had to decide whether to include
+student demographics as predictors. In Case Study 4 (dropout early warning),
+you had to decide how to prevent disproportionate flagging of certain groups.
+In each of those discussions, the question was not simply technical — it was
+normative. Today we formalize that.
+
+---
+
+## Loading Artifacts from Lecture 18
+
+```{r load-artifacts}
+analytic_sample <- readRDS(here::here("analytic_sample.rds"))
+final_fit       <- readRDS(here::here("final_fit.rds"))
+cip_labels      <- read_csv(here::here("cip2_labels.csv"),
+                             show_col_types = FALSE)
+
+label_lookup <- cip_labels %>%
+  select(cip2_collapsed_code, cip2_collapsed_label) %>%
+  distinct() %>%
+  mutate(cip2_collapsed_code = as.factor(cip2_collapsed_code))
+```
+
+---
+
+## ELS:2002 Coding for Subgroup Variables
+
+Before we analyze subgroup performance, we need to understand the ELS coding
+schemes.
+
+### Race (`byrace`)
+
+ELS:2002 uses a composite race/ethnicity variable. The public-use file codes it
+as follows (see NCES codebook, variable `byrace`):
+
+| Code | Label |
+|------|-------|
+| 1 | American Indian / Alaska Native, non-Hispanic |
+| 2 | Asian, Hawaii/Pacific Islander, non-Hispanic |
+| 3 | Black or African-American, non-Hispanic |
+| 4 | Hispanic, no race specified |
+| 5 | Hispanic, race specified |
+| 6 | Multiracial, non-Hispanic |
+| 7 | White, non-Hispanic |
+
+For analytic clarity we collapse codes 4 and 5 into a single Hispanic category
+and relabel for readability. Cells with very small $n$ will be noted in the
+output.
+
+### Sex (`bysex`)
+
+| Code | Label |
+|------|-------|
+| 1 | Male |
+| 2 | Female |
+
+```{r recode-subgroups}
+recode_subgroups <- function(df) {
+  df %>%
+    mutate(
+      race_label = case_when(
+        byrace == 1 ~ "Am. Indian/AK Native",
+        byrace == 2 ~ "Asian/Pacific Islander",
+        byrace == 3 ~ "Black",
+        byrace %in% c(4, 5) ~ "Hispanic",
+        byrace == 6 ~ "Multiracial",
+        byrace == 7 ~ "White",
+        TRUE        ~ NA_character_
+      ),
+      sex_label = case_when(
+        bysex == 1 ~ "Male",
+        bysex == 2 ~ "Female",
+        TRUE       ~ NA_character_
+      ),
+      race_label = factor(race_label, levels = c(
+        "Am. Indian/AK Native", "Asian/Pacific Islander",
+        "Black", "Hispanic", "Multiracial", "White"
+      )),
+      sex_label = factor(sex_label, levels = c("Male", "Female"))
+    )
+}
+```
+
+---
+
+## Assembling the Subgroup-Annotated Test Set
+
+The test predictions from `last_fit()` do not include `bysex` or `byrace`
+because we assigned them the role `"subgroup"` in the recipe — they were never
+baked into the model matrix. We recover them by joining back on `stu_id`.
+
+```{r assemble-test-preds}
+# Recover test-set rows from the analytic sample
+set.seed(2002)
+els_split <- initial_split(analytic_sample, prop = 0.80, strata = cip2)
+els_test  <- testing(els_split)
+
+# Subgroup metadata for the test set
+subgroup_meta <- els_test %>%
+  select(stu_id, bysex, byrace, cip2_collapsed_label) %>%
+  recode_subgroups()
+
+# Join to model predictions
+test_preds <- collect_predictions(final_fit) %>%
+  bind_cols(els_test %>% select(stu_id)) %>%
+  left_join(subgroup_meta, by = "stu_id")
+
+glimpse(test_preds)
+```
+
+### Face Validity Check
+
+```{r face-validity-subgroup}
+# Are the subgroup distributions in the test set reasonable?
+test_preds %>%
+  count(race_label) %>%
+  mutate(pct = n / sum(n)) %>%
+  kable(digits = 3, caption = "Race distribution in test set") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"))
+
+test_preds %>%
+  count(sex_label) %>%
+  mutate(pct = n / sum(n)) %>%
+  kable(digits = 3, caption = "Sex distribution in test set") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"))
+```
+
+Small cells (particularly American Indian/Alaska Native) should be interpreted
+with caution. We will note cell sizes throughout.
+
+---
+
+## Subgroup Analysis by Sex
+
+### Overall Accuracy by Sex
+
+```{r accuracy-by-sex}
+accuracy_by_sex <- test_preds %>%
+  filter(!is.na(sex_label)) %>%
+  group_by(sex_label) %>%
+  accuracy(truth = cip2, estimate = .pred_class) %>%
+  select(sex_label, .estimate) %>%
+  rename(accuracy = .estimate)
+
+accuracy_by_sex %>%
+  kable(digits = 3, caption = "Overall accuracy by sex") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"))
+```
+
+Accuracy alone is insufficient — we need to understand *which* majors are
+being correctly classified for each group. A model could have equal overall
+accuracy for men and women but still systematically misclassify one group
+into different major categories than the other.
+
+### Confusion Matrices by Sex
+
+```{r conf-mat-by-sex, fig.width=14, fig.height=7}
+# Compute confusion matrix separately for each sex
+make_conf_mat_plot <- function(df, group_label) {
+  conf_mat(df, truth = cip2, estimate = .pred_class) %>%
+    autoplot(type = "heatmap") +
+    scale_fill_gradient(low = "white", high = "#2C7BB6") +
+    labs(
+      title    = group_label,
+      subtitle = paste0("n = ", nrow(df))
+    ) +
+    theme_els() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
+      axis.text.y = element_text(size = 7),
+      legend.position = "none"
+    )
+}
+
+conf_plots_sex <- test_preds %>%
+  filter(!is.na(sex_label)) %>%
+  group_by(sex_label) %>%
+  group_map(~ make_conf_mat_plot(.x, .y$sex_label), .keep = TRUE)
+
+conf_plots_sex[[1]] + conf_plots_sex[[2]] +
+  plot_annotation(
+    title    = "Confusion Matrices by Sex",
+    subtitle = "Rows: true class  |  Columns: predicted class",
+    theme    = theme_els()
+  )
+```
+
+### Per-Class F1 by Sex
+
+```{r f1-by-sex}
+f1_by_sex <- test_preds %>%
+  filter(!is.na(sex_label)) %>%
+  group_by(sex_label) %>%
+  f_meas(truth = cip2, estimate = .pred_class, estimator = "macro") %>%
+  select(sex_label, .estimate) %>%
+  rename(f1 = .estimate)
+
+f1_by_sex %>%
+  kable(digits = 3, caption = "Macro-averaged F1 by sex") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"))
+```
+
+```{r f1-by-sex-major, fig.height=7}
+# F1 broken out by major field and sex — shows where gaps arise
+f1_by_sex_major <- test_preds %>%
+  filter(!is.na(sex_label)) %>%
+  group_by(sex_label) %>%
+  group_modify(function(df, grp) {
+    df %>%
+      group_by(cip2) %>%
+      summarise(
+        n         = n(),
+        precision = precision_vec(truth = cip2, estimate = .pred_class),
+        recall    = recall_vec(truth = cip2, estimate = .pred_class),
+        f1        = f_meas_vec(truth = cip2, estimate = .pred_class),
+        .groups   = "drop"
+      )
+  }) %>%
+  left_join(label_lookup, by = join_by(cip2 == cip2_collapsed_code))
+
+f1_by_sex_major %>%
+  filter(!is.na(cip2_collapsed_label)) %>%
+  mutate(cip2_collapsed_label = fct_reorder(cip2_collapsed_label, f1)) %>%
+  ggplot(aes(x = f1, y = cip2_collapsed_label, fill = sex_label)) +
+  geom_col(position = "dodge", alpha = 0.85) +
+  scale_fill_manual(values = c(Male = "#2C7BB6", Female = "#D7191C")) +
+  scale_x_continuous(limits = c(0, 1)) +
+  labs(
+    title    = "Per-Major F1 Score by Sex",
+    subtitle = "Higher is better; gaps indicate disparate classification accuracy by major",
+    x        = "F1 Score",
+    y        = NULL,
+    fill     = "Sex"
+  ) +
+  theme_els()
+```
+
+Pay attention to majors where there is a large gap between bars. If the model
+consistently underperforms for women in STEM fields or for men in Education,
+that pattern is meaningful — and it almost certainly reflects both real
+differences in the training data distribution and the model's tendency to
+amplify those patterns.
+
+### ROC AUC by Sex
+
+```{r roc-auc-by-sex}
+roc_auc_by_sex <- test_preds %>%
+  filter(!is.na(sex_label)) %>%
+  group_by(sex_label) %>%
+  roc_auc(
+    truth      = cip2,
+    starts_with(".pred_"),
+    estimator  = "macro_weighted"
+  ) %>%
+  select(sex_label, .estimate) %>%
+  rename(roc_auc = .estimate)
+
+roc_auc_by_sex %>%
+  kable(digits = 3, caption = "Macro-weighted ROC AUC by sex") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"))
+```
+
+---
+
+## Subgroup Analysis by Race
+
+### Overall Accuracy by Race
+
+```{r accuracy-by-race}
+accuracy_by_race <- test_preds %>%
+  filter(!is.na(race_label)) %>%
+  group_by(race_label) %>%
+  summarise(
+    n        = n(),
+    accuracy = accuracy_vec(truth = cip2, estimate = .pred_class),
+    .groups  = "drop"
+  ) %>%
+  arrange(desc(accuracy))
+
+accuracy_by_race %>%
+  kable(digits = 3, caption = "Overall accuracy by race (test set)") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"))
+```
+
+```{r accuracy-race-plot, fig.height=5}
+accuracy_by_race %>%
+  filter(n >= 30) %>%        # suppress small-cell estimates
+  mutate(race_label = fct_reorder(race_label, accuracy)) %>%
+  ggplot(aes(x = accuracy, y = race_label)) +
+  geom_col(fill = "#2C7BB6", alpha = 0.85) +
+  geom_text(aes(label = paste0("n=", n)), hjust = -0.15, size = 3.2) +
+  scale_x_continuous(limits = c(0, 0.6), labels = scales::percent) +
+  labs(
+    title    = "Classification Accuracy by Race",
+    subtitle = "ELS:2002 test set  |  Groups with n < 30 suppressed",
+    x        = "Accuracy",
+    y        = NULL
+  ) +
+  theme_els()
+```
+
+### ROC AUC by Race
+
+```{r roc-auc-by-race}
+roc_auc_by_race <- test_preds %>%
+  filter(!is.na(race_label)) %>%
+  group_by(race_label) %>%
+  group_modify(function(df, grp) {
+    if (nrow(df) < 30) return(tibble(.estimate = NA_real_))
+    df %>%
+      roc_auc(
+        truth     = cip2,
+        starts_with(".pred_"),
+        estimator = "macro_weighted"
+      ) %>%
+      select(.estimate)
+  }) %>%
+  rename(roc_auc = .estimate) %>%
+  left_join(accuracy_by_race %>% select(race_label, n), by = "race_label") %>%
+  filter(!is.na(roc_auc))
+
+roc_auc_by_race %>%
+  arrange(desc(roc_auc)) %>%
+  kable(digits = 3, caption = "Macro-weighted ROC AUC by race (groups with n >= 30)") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"))
+```
+
+```{r roc-auc-race-plot, fig.height=5}
+roc_auc_by_race %>%
+  mutate(race_label = fct_reorder(race_label, roc_auc)) %>%
+  ggplot(aes(x = roc_auc, y = race_label)) +
+  geom_col(fill = "#2C7BB6", alpha = 0.85) +
+  geom_text(aes(label = paste0("n=", n)), hjust = -0.15, size = 3.2) +
+  scale_x_continuous(limits = c(0, 1),
+                     labels = scales::number_format(accuracy = 0.01)) +
+  labs(
+    title    = "Macro-Weighted ROC AUC by Race",
+    subtitle = "ELS:2002 test set  |  Groups with n < 30 suppressed",
+    x        = "ROC AUC",
+    y        = NULL
+  ) +
+  theme_els()
+```
+
+### Predicted Major Distribution by Race
+
+Even if accuracy were identical across groups, the *distribution of
+predictions* might differ systematically. If the model consistently routes
+Black and Hispanic students toward certain major categories more than White
+or Asian students with similar observed characteristics, that is a form of
+disparate impact regardless of whether those predictions are correct.
+
+```{r pred-dist-by-race, fig.height=8}
+test_preds %>%
+  filter(!is.na(race_label)) %>%
+  left_join(
+    label_lookup %>% rename(pred_major_label = cip2_collapsed_label),
+    by = join_by(.pred_class == cip2_collapsed_code)
+  ) %>%
+  count(race_label, pred_major_label) %>%
+  group_by(race_label) %>%
+  mutate(pct = n / sum(n)) %>%
+  ungroup() %>%
+  filter(!is.na(pred_major_label)) %>%
+  ggplot(aes(x = pct, y = fct_reorder(pred_major_label, pct), fill = race_label)) +
+  geom_col(position = "dodge", alpha = 0.85) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title    = "Distribution of Predicted Majors by Race",
+    subtitle = "Each row is a predicted major; bars show % of each racial group predicted there",
+    x        = "% of group",
+    y        = NULL,
+    fill     = "Race"
+  ) +
+  theme_els() +
+  theme(legend.position = "right")
+```
+
+---
+
+## Intersectional Analysis: Race × Gender
+
+Subgroup analyses by race alone and by gender alone can mask important
+variation. A model that performs well for White women and Black men might still
+perform poorly for Black women — a pattern invisible in the marginal analyses.
+This is the core insight of **intersectionality** in a fairness context.
+
+```{r intersectional-accuracy, fig.height=6}
+intersect_accuracy <- test_preds %>%
+  filter(!is.na(race_label), !is.na(sex_label)) %>%
+  group_by(race_label, sex_label) %>%
+  summarise(
+    n        = n(),
+    accuracy = accuracy_vec(truth = cip2, estimate = .pred_class),
+    .groups  = "drop"
+  ) %>%
+  filter(n >= 20)   # suppress very small cells
+
+intersect_accuracy %>%
+  ggplot(aes(x = race_label, y = accuracy, fill = sex_label)) +
+  geom_col(position = "dodge", alpha = 0.85) +
+  geom_text(
+    aes(label = paste0("n=", n)),
+    position = position_dodge(width = 0.9),
+    vjust = -0.4, size = 2.8
+  ) +
+  scale_fill_manual(values = c(Male = "#2C7BB6", Female = "#D7191C")) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.7)) +
+  labs(
+    title    = "Classification Accuracy: Race × Sex Interaction",
+    subtitle = "ELS:2002 test set  |  Cells with n < 20 suppressed",
+    x        = NULL,
+    y        = "Accuracy",
+    fill     = "Sex"
+  ) +
+  theme_els() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+```{r intersectional-roc, fig.height=6}
+intersect_roc <- test_preds %>%
+  filter(!is.na(race_label), !is.na(sex_label)) %>%
+  group_by(race_label, sex_label) %>%
+  group_modify(function(df, grp) {
+    if (nrow(df) < 30) return(tibble(roc_auc = NA_real_, n = nrow(df)))
+    roc <- df %>%
+      roc_auc(
+        truth     = cip2,
+        starts_with(".pred_"),
+        estimator = "macro_weighted"
+      )
+    tibble(roc_auc = roc$.estimate, n = nrow(df))
+  }) %>%
+  filter(!is.na(roc_auc))
+
+intersect_roc %>%
+  ggplot(aes(x = race_label, y = roc_auc, fill = sex_label)) +
+  geom_col(position = "dodge", alpha = 0.85) +
+  geom_text(
+    aes(label = paste0("n=", n)),
+    position = position_dodge(width = 0.9),
+    vjust = -0.4, size = 2.8
+  ) +
+  scale_fill_manual(values = c(Male = "#2C7BB6", Female = "#D7191C")) +
+  scale_y_continuous(limits = c(0, 1),
+                     labels = scales::number_format(accuracy = 0.01)) +
+  labs(
+    title    = "ROC AUC: Race × Sex Interaction",
+    subtitle = "Macro-weighted  |  Cells with n < 30 suppressed",
+    x        = NULL,
+    y        = "ROC AUC",
+    fill     = "Sex"
+  ) +
+  theme_els() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+---
+
+## What the Model Actually Learned: Predicted Probabilities by Race
+
+Looking at hard classifications (`.pred_class`) tells us about errors. But the
+*predicted probabilities* reveal something additional: how *confident* the model
+is, and whether that confidence is calibrated differently across groups.
+
+```{r max-prob-by-race, fig.height=5}
+# Max predicted probability = how confident is the model in its top choice?
+test_preds %>%
+  filter(!is.na(race_label)) %>%
+  mutate(
+    max_prob = pmap_dbl(
+      select(., starts_with(".pred_")),
+      ~ max(c(...))
+    ),
+    correct = (cip2 == .pred_class)
+  ) %>%
+  ggplot(aes(x = max_prob, fill = race_label)) +
+  geom_density(alpha = 0.45) +
+  scale_fill_brewer(palette = "Set2") +
+  facet_wrap(~ correct, labeller = as_labeller(c(`TRUE` = "Correct", `FALSE` = "Incorrect"))) +
+  labs(
+    title    = "Model Confidence (Max Predicted Probability) by Race",
+    subtitle = "Separated by whether the prediction was correct",
+    x        = "Max predicted probability",
+    y        = "Density",
+    fill     = "Race"
+  ) +
+  theme_els()
+```
+
+If some racial groups have systematically lower max probabilities even on correct
+predictions, the model is less certain about those students. That uncertainty
+has practical consequences: a downstream decision-maker using probability
+thresholds would treat those students differently.
+
+---
+
+## Connecting to Major-Specific Disparities
+
+We have seen overall performance gaps. Now we zoom in: for which specific major
+categories does the model fail most for underrepresented groups? This is where
+subgroup analysis connects directly to the substantive question — who gets
+routed where.
+
+```{r recall-by-race-major, fig.height=9}
+# Per-class recall by race
+recall_by_race_major <- test_preds %>%
+  filter(!is.na(race_label)) %>%
+  group_by(race_label) %>%
+  group_modify(function(df, grp) {
+    if (nrow(df) < 30) return(tibble())
+    df %>%
+      group_by(cip2) %>%
+      summarise(
+        n_true    = n(),
+        n_correct = sum(.pred_class == cip2),
+        recall    = n_correct / n_true,
+        .groups   = "drop"
+      )
+  }) %>%
+  left_join(label_lookup, by = join_by(cip2 == cip2_collapsed_code)) %>%
+  filter(!is.na(cip2_collapsed_label))
+
+recall_by_race_major %>%
+  filter(n_true >= 10) %>%   # suppress very small within-group cells
+  mutate(cip2_collapsed_label = fct_reorder(cip2_collapsed_label, recall)) %>%
+  ggplot(aes(x = recall, y = cip2_collapsed_label, fill = race_label)) +
+  geom_col(position = "dodge", alpha = 0.85) +
+  scale_fill_brewer(palette = "Set2") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 1)) +
+  labs(
+    title    = "Per-Major Recall by Race",
+    subtitle = "Among true members of each major, what fraction did the model correctly identify?",
+    x        = "Recall",
+    y        = NULL,
+    fill     = "Race"
+  ) +
+  theme_els() +
+  theme(legend.position = "right")
+```
+
+---
+
+## Formal Fairness Criteria: An Impossible Dream?
+
+The empirical patterns above motivate a deeper question: what does it mean for
+a model to be *fair*? Researchers in algorithmic fairness have proposed several
+formal criteria, and an important mathematical result shows that most of them
+cannot hold simultaneously when base rates differ across groups.
+
+### Three common criteria
+
+**Demographic parity** (independence): The probability of receiving a predicted
+classification is equal across groups. If the model predicts "STEM" for 20% of
+White students, it should predict "STEM" for 20% of Black students too.
+
+**Equalized odds**: The true positive rate (recall) and false positive rate are
+equal across groups. The model is equally good at detecting true STEM majors,
+and equally cautious about false alarms, regardless of race.
+
+**Calibration** (sufficiency): Among students to whom the model assigns a 70%
+probability of being a STEM major, 70% should actually be STEM majors —
+regardless of race. The model's confidence is accurate for all groups.
+
+### Why they conflict
+
+When the outcome base rates differ across groups — and they do in ELS:2002 —
+you provably cannot satisfy demographic parity, equalized odds, and perfect
+calibration at the same time (Chouldechova, 2017; Kleinberg et al., 2017). This
+is not a limitation of our model or our implementation. It is a mathematical
+theorem about the structure of the problem.
+
+The practical implication: choosing a fairness criterion is a normative
+decision, not a technical one. A researcher building a major prediction tool
+must decide which kind of error — false inclusions or false exclusions from
+certain major pathways — is more costly, and for whom. That decision cannot be
+made by optimizing a loss function. It requires normative reasoning about the
+purposes of prediction and the context in which it will be used.
+
+```{r fairness-criteria-check}
+# Do base rates differ across racial groups?
+# (This motivates why the impossibility result applies here)
+analytic_sample %>%
+  recode_subgroups() %>%
+  filter(!is.na(race_label)) %>%
+  count(race_label, cip2) %>%
+  group_by(race_label) %>%
+  mutate(pct = n / sum(n)) %>%
+  ungroup() %>%
+  left_join(label_lookup, by = join_by(cip2 == cip2_collapsed_code)) %>%
+  filter(!is.na(cip2_collapsed_label)) %>%
+  select(race_label, cip2_collapsed_label, pct) %>%
+  pivot_wider(names_from = race_label, values_from = pct, values_fill = 0) %>%
+  kable(digits = 3,
+        caption = "Major field base rates by race — these differ, so fairness criteria conflict") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"))
+```
+
+---
+
+## What Is the Source of the Disparity?
+
+When a model produces unequal performance across groups, there are several
+possible explanations. These are not mutually exclusive.
+
+**Representation in training data.** If Black or Hispanic students are
+underrepresented in the training data, the model has seen fewer examples of
+their patterns and will perform worse on them at test time. This is a
+*data problem*, not a model problem — but the model amplifies it.
+
+**Proxy features.** We excluded race and gender from the predictor set. But
+many of the predictors we did include — parental education, income, school
+sector, regional location — are correlated with race. The model can
+reconstruct something like race from these proxies. This is called proxy
+discrimination, and it is one of the core challenges of fairness-aware
+machine learning.
+
+**Label quality.** The outcome — degree major as recorded in postsecondary
+transcripts — may be measured differently or with different error rates across
+groups. If certain students are more likely to switch majors after initial
+enrollment, their transcript major may be less stable, adding noise to the
+labels for that group.
+
+**Structural inequality in the predictors themselves.** A Black student and a
+White student with the same math test score are not in the same position if
+they attended schools with very different resource levels, course offerings, or
+grading standards. The test score means something different in context, but the
+model treats it as a number. This is the deepest problem — it applies even if
+we solve the data and proxy issues.
+
+```{r proxy-check, fig.height=5}
+# Do the proxy variables vary by race? This is expected and not surprising,
+# but it motivates why excluding race doesn't "solve" the problem.
+analytic_sample %>%
+  recode_subgroups() %>%
+  filter(!is.na(race_label)) %>%
+  group_by(race_label) %>%
+  summarise(
+    mean_ses  = mean(byses2, na.rm = TRUE),
+    mean_math = mean(bytxmstd, na.rm = TRUE),
+    mean_read = mean(bytxrstd, na.rm = TRUE),
+    n         = n(),
+    .groups   = "drop"
+  ) %>%
+  filter(n >= 30) %>%
+  pivot_longer(c(mean_ses, mean_math, mean_read),
+               names_to = "measure", values_to = "mean_value") %>%
+  mutate(
+    measure = recode(measure,
+                     mean_ses  = "SES composite (byses2)",
+                     mean_math = "Math test score (bytxmstd)",
+                     mean_read = "Reading test score (bytxrstd)")
+  ) %>%
+  ggplot(aes(x = race_label, y = mean_value, fill = race_label)) +
+  geom_col(alpha = 0.85, show.legend = FALSE) +
+  facet_wrap(~ measure, scales = "free_y") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title    = "Mean Values of Key Proxy Predictors by Race",
+    subtitle = "These predictors are in the model; their variation by race enters model predictions",
+    x        = NULL,
+    y        = "Mean"
+  ) +
+  theme_els() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, size = 8))
+```
+
+This plot is important. It shows that the variables we kept in the model vary
+substantially by race. The model did not "see" race directly — but it saw the
+world through variables that are partially constituted by race-based inequality.
+That information does not disappear because we excluded `byrace` from the
+recipe.
+
+---
+
+## Connecting to Lecture 13: The Case Studies Revisited
+
+In Lecture 13 you worked through several scenarios involving predictive models
+in educational contexts. The subgroup analysis above is the empirical version of
+the normative questions you were asked to consider.
+
+**Case Study 1 (Enrollment prediction):** Your group had to decide whether to
+include student demographics as predictors. We showed above that excluding them
+does not eliminate their influence — it just makes that influence opaque. An
+enrollment model that systematically overestimates yield for high-income students
+and underestimates it for low-income students will lead to aid misallocation
+regardless of whether income was in the model explicitly.
+
+**Case Study 2 (School enrollment forecasting):** The question of which schools
+are predicted to decline often correlates heavily with the racial composition
+of the school's attendance zone. A model that uses demographic trends as
+predictors — which is technically useful — can also encode and amplify
+residential segregation patterns into resource allocation decisions.
+
+**Case Study 4 (Dropout early warning):** This is the sharpest case. An early
+warning system that flags Black and Hispanic students at higher rates than White
+students with similar observable characteristics — even without explicit race
+coding — can create a self-fulfilling prophecy: students who are flagged receive
+intrusive interventions that may themselves affect outcomes, and students who are
+not flagged are left without support. The system's errors are not random noise;
+they are structured by inequality.
+
+The through-line: what you include in a model, what you exclude, and for what
+purpose you deploy the model are not value-neutral technical choices. The
+subgroup analysis gives you the empirical tools to surface these issues. What
+you do with those results requires judgment that the numbers cannot supply.
+
+---
+
+## Reporting Subgroup Performance: A Practical Template
+
+When publishing or deploying a model with real-world consequences, subgroup
+performance reporting is increasingly expected — and in some regulatory
+contexts, required. A minimal responsible reporting template includes:
+
+1. **Subgroup N's and proportions** in train and test sets.
+2. **Accuracy, precision, recall, and F1** disaggregated by relevant subgroups.
+3. **ROC AUC** disaggregated, with note on small-cell suppression thresholds.
+4. **Calibration plots** by subgroup (not covered today but important for
+   high-stakes deployment).
+5. **Intersectional breakdowns** for the most policy-relevant combinations.
+6. **Qualitative narrative** about the sources of any gaps observed and what
+   the model cannot adjust for (e.g., structural inequality in predictors).
+
+```{r summary-table}
+# Compact summary table for reporting
+summary_race <- test_preds %>%
+  filter(!is.na(race_label)) %>%
+  group_by(group = as.character(race_label)) %>%
+  summarise(
+    subgroup_type = "Race",
+    n        = n(),
+    accuracy = accuracy_vec(truth = cip2, estimate = .pred_class),
+    .groups  = "drop"
+  )
+
+summary_sex <- test_preds %>%
+  filter(!is.na(sex_label)) %>%
+  group_by(group = as.character(sex_label)) %>%
+  summarise(
+    subgroup_type = "Sex",
+    n        = n(),
+    accuracy = accuracy_vec(truth = cip2, estimate = .pred_class),
+    .groups  = "drop"
+  )
+
+summary_table <- bind_rows(summary_race, summary_sex) %>%
+  filter(n >= 20) %>%
+  arrange(subgroup_type, desc(accuracy))
+
+summary_table %>%
+  select(subgroup_type, group, n, accuracy) %>%
+  kable(digits = 3,
+        caption = "Subgroup performance summary (accuracy; groups with n < 20 suppressed)") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed")) %>%
+  pack_rows(index = table(summary_table$subgroup_type))
+```
