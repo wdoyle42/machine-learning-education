@@ -1,6 +1,9 @@
 ---
 title: "Lecture 18: Multinomial Classification with Keras and ELS:2002"
 output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
@@ -18,33 +21,37 @@ fit_model <- FALSE
 
 ## Overview
 
-In the previous lectures we built intuition for neural networks, worked through
-backpropagation by hand, and explored regularization strategies. Today we put
-all of that together in a real applied problem: predicting college major field of
-study from the Education Longitudinal Study of 2002 (ELS:2002), using a
-multilayer perceptron (MLP) fit via **Keras** inside the tidymodels framework.
+In the previous lectures we built intuition for neural networks, worked
+through backpropagation by hand, and explored regularization strategies.
+Today we put all of that together in a real applied problem: predicting
+college major field of study from the Education Longitudinal Study of
+2002 (ELS:2002), using a multilayer perceptron (MLP) fit via **Keras**
+inside the tidymodels framework.
 
-Along the way we will pay particular attention to the features Keras provides
-that you either cannot do at all in PyTorch, or that require substantially more
-boilerplate. The headline items:
+Along the way we will pay particular attention to the features Keras
+provides that you either cannot do at all in PyTorch, or that require
+substantially more boilerplate. The headline items:
 
-1. **Callbacks** — early stopping, learning rate scheduling, and custom logging
-   are first-class objects in Keras, wired directly into `model.fit()`.
-2. **`validation_split`** — Keras can carve out a held-out slice of training
-   data automatically, with no extra code from you.
-3. **Opinionated defaults** — Keras ships with sensible defaults for optimizers,
-   loss functions, and initializers. For a multinomial problem this means you
-   get `softmax` output and `categorical_crossentropy` for free.
-4. **Training history** — Keras returns a `History` object after every fit,
-   giving you epoch-level loss and metric curves without writing a custom loop.
+1.  **Callbacks** — early stopping, learning rate scheduling, and custom
+    logging are first-class objects in Keras, wired directly into
+    `model.fit()`.
+2.  **`validation_split`** — Keras can carve out a held-out slice of
+    training data automatically, with no extra code from you.
+3.  **Opinionated defaults** — Keras ships with sensible defaults for
+    optimizers, loss functions, and initializers. For a multinomial
+    problem this means you get `softmax` output and
+    `categorical_crossentropy` for free.
+4.  **Training history** — Keras returns a `History` object after every
+    fit, giving you epoch-level loss and metric curves without writing a
+    custom loop.
 
-PyTorch is more flexible and often faster, but that flexibility comes at the
-cost of writing more infrastructure. Keras trades some of that ceiling for a
-much lower floor. For applied social science and education research — where the
-bottleneck is usually data and domain knowledge, not model architecture — that
-tradeoff is often worth it.
+PyTorch is more flexible and often faster, but that flexibility comes at
+the cost of writing more infrastructure. Keras trades some of that
+ceiling for a much lower floor. For applied social science and education
+research — where the bottleneck is usually data and domain knowledge,
+not model architecture — that tradeoff is often worth it.
 
----
+------------------------------------------------------------------------
 
 ## Setup and Libraries
 
@@ -73,29 +80,29 @@ theme_els <- function() {
 }
 ```
 
----
+------------------------------------------------------------------------
 
 ## The Research Problem
 
-ELS:2002 followed a nationally representative cohort of 10th graders through
-high school and into postsecondary education. Our analytic sample consists of
-students who:
+ELS:2002 followed a nationally representative cohort of 10th graders
+through high school and into postsecondary education. Our analytic
+sample consists of students who:
 
-- Ever enrolled in postsecondary education (`f2evratt == 1`), and
-- Completed a bachelor's degree with an observed CIP-2 major code
-  (`f3tzbch1cip2` is not missing).
+-   Ever enrolled in postsecondary education (`f2evratt == 1`), and
+-   Completed a bachelor's degree with an observed CIP-2 major code
+    (`f3tzbch1cip2` is not missing).
 
-The outcome is **collapsed CIP-2 major field**, a multinomial variable with
-several broad categories (e.g., STEM, Education, Business, Humanities). We
-predict it from a set of longitudinal predictors spanning 10th grade background,
-12th grade attitudes and plans, and early postsecondary transcript data —
-carefully ordered to avoid data leakage. Declared major is excluded as a
-predictor for the same reason.
+The outcome is **collapsed CIP-2 major field**, a multinomial variable
+with several broad categories (e.g., STEM, Education, Business,
+Humanities). We predict it from a set of longitudinal predictors
+spanning 10th grade background, 12th grade attitudes and plans, and
+early postsecondary transcript data — carefully ordered to avoid data
+leakage. Declared major is excluded as a predictor for the same reason.
 
-Race and gender are withheld from the predictor set entirely; they are reserved
-for a post-hoc subgroup analysis.
+Race and gender are withheld from the predictor set entirely; they are
+reserved for a post-hoc subgroup analysis.
 
----
+------------------------------------------------------------------------
 
 ## Data Wrangling
 
@@ -103,14 +110,16 @@ for a post-hoc subgroup analysis.
 
 The variable selection spans four ELS waves. Broadly:
 
-- **BY (base year, 10th grade):** demographics, cognitive achievement scores,
-  psychosocial scales, aspirations, school context.
-- **F1 (12th grade):** updated expectations, highest math course, PS plans.
-- **F2 (2006):** first postsecondary institution characteristics, enrollment
-  behavior.
-- **F3TZ (postsecondary transcript, early years only):** credits earned and GPA
-  in years 1–2. *Only early-enrollment transcript variables are used* — later
-  transcript variables would leak information about the major itself.
+-   **BY (base year, 10th grade):** demographics, cognitive achievement
+    scores, psychosocial scales, aspirations, school context.
+-   **F1 (12th grade):** updated expectations, highest math course, PS
+    plans.
+-   **F2 (2006):** first postsecondary institution characteristics,
+    enrollment behavior.
+-   **F3TZ (postsecondary transcript, early years only):** credits
+    earned and GPA in years 1–2. *Only early-enrollment transcript
+    variables are used* — later transcript variables would leak
+    information about the major itself.
 
 ```{r els-vars}
 els_vars <- c(
@@ -184,7 +193,8 @@ nominal_vars <- c(
 ### Loading and Cleaning
 
 NCES uses negative codes (–1 through –9) to encode various forms of
-non-response and skip patterns. We recode all of these to `NA` after loading.
+non-response and skip patterns. We recode all of these to `NA` after
+loading.
 
 ```{r load-data}
 load_els <- function(path) {
@@ -222,6 +232,7 @@ make_analytic_sample <- function(els_clean) {
 ```
 
 ```{r run-wrangle, eval=fit_model}
+## Need to download from NCES Data Center
 els_raw       <- load_els(here("scripts","els_02_12_byf3pststu_v1_0.dta"))
 cip_labels    <- load_cip_labels(here("scripts","cip2_labels.csv"))
 els_clean     <- wrangle_els(els_raw, cip_labels)
@@ -292,10 +303,10 @@ analytic_sample %>%
   theme_els()
 ```
 
-The outcome is imbalanced — Business and Social Sciences are far more common
-than Computer Science or Engineering. This has direct implications for how we
-choose metrics (more on that in the evaluation section) and how Keras handles
-the output layer.
+The outcome is imbalanced — Business and Social Sciences are far more
+common than Computer Science or Engineering. This has direct
+implications for how we choose metrics (more on that in the evaluation
+section) and how Keras handles the output layer.
 
 ### Missingness
 
@@ -323,13 +334,14 @@ analytic_sample %>%
   theme_els()
 ```
 
-Transcript variables (`f3tzyr*`) show the highest missingness — students who
-did not attend college, attended briefly, or whose records were not matched have
-missing values here. Crucially, *the fact of missingness is itself informative*:
-a student with no Year 1 GPA record is different from one with a 2.5. We encode
-this with missingness indicators in the recipe.
+Transcript variables (`f3tzyr*`) show the highest missingness — students
+who did not attend college, attended briefly, or whose records were not
+matched have missing values here. Crucially, *the fact of missingness is
+itself informative*: a student with no Year 1 GPA record is different
+from one with a 2.5. We encode this with missingness indicators in the
+recipe.
 
----
+------------------------------------------------------------------------
 
 ## Train/Test Split and Cross-Validation
 
@@ -341,21 +353,22 @@ els_test  <- testing(els_split)
 
 ```
 
-We use stratified splits to preserve the class distribution across training and
-test sets — important given the imbalance we saw above.
+We use stratified splits to preserve the class distribution across
+training and test sets — important given the imbalance we saw above.
 
 ```{r folds, eval=fit_model}
 set.seed(2002)
 els_folds <- vfold_cv(els_train, v = 5, strata = cip2)
 ```
 
----
+------------------------------------------------------------------------
 
 ## Preprocessing Recipe
 
-The recipe codifies every preprocessing step in a reproducible, leak-free way.
-Steps are applied in order, and all parameters (medians, standard deviations)
-are estimated only from the training fold — never from the test data.
+The recipe codifies every preprocessing step in a reproducible,
+leak-free way. Steps are applied in order, and all parameters (medians,
+standard deviations) are estimated only from the training fold — never
+from the test data.
 
 ```{r recipe}
 els_recipe <- recipe(cip2 ~ ., data = els_train) %>%
@@ -387,16 +400,17 @@ els_recipe <- recipe(cip2 ~ ., data = els_train) %>%
   step_normalize(all_numeric_predictors())
 ```
 
-**Why `one_hot = TRUE`?** Standard dummy encoding drops one reference category
-per factor to avoid the dummy variable trap in linear models. Neural networks
-have no such constraint — no matrix inversion, no multicollinearity problem —
-and symmetric encoding can help the network learn representations for all levels
-equally. We keep all dummies.
+**Why `one_hot = TRUE`?** Standard dummy encoding drops one reference
+category per factor to avoid the dummy variable trap in linear models.
+Neural networks have no such constraint — no matrix inversion, no
+multicollinearity problem — and symmetric encoding can help the network
+learn representations for all levels equally. We keep all dummies.
 
-**Why normalize?** Keras uses gradient-based optimization (Adam by default).
-If predictors are on wildly different scales, gradients will be dominated by
-large-magnitude variables, and training will be slow or unstable. Normalizing to
-mean 0, standard deviation 1 is not optional here — it is required.
+**Why normalize?** Keras uses gradient-based optimization (Adam by
+default). If predictors are on wildly different scales, gradients will
+be dominated by large-magnitude variables, and training will be slow or
+unstable. Normalizing to mean 0, standard deviation 1 is not optional
+here — it is required.
 
 ```{r check-recipe}
 # Face validity: how many predictors after preprocessing?
@@ -408,22 +422,23 @@ cat("Columns (outcome + predictors):", ncol(baked), "\n")
 cat("Number of predictors:", ncol(baked) - 1, "\n")
 ```
 
----
+------------------------------------------------------------------------
 
 ## Keras-Specific Features
 
-Before we build the model spec, it's worth pausing to understand what Keras is
-doing under the hood and where it differs from PyTorch.
+Before we build the model spec, it's worth pausing to understand what
+Keras is doing under the hood and where it differs from PyTorch.
 
 ### The Architecture
 
-We use a two-hidden-layer MLP (the default for `parsnip`'s Keras engine). Each
-hidden layer uses **ReLU** activation. The output layer uses **softmax**, which
-converts the raw logit scores into a proper probability distribution over all
-major categories. This is automatic in Keras — you do not specify the output
-layer manually when using `parsnip`.
+We use a two-hidden-layer MLP (the default for `parsnip`'s Keras
+engine). Each hidden layer uses **ReLU** activation. The output layer
+uses **softmax**, which converts the raw logit scores into a proper
+probability distribution over all major categories. This is automatic in
+Keras — you do not specify the output layer manually when using
+`parsnip`.
 
-```
+```         
 Input (p predictors)
     ↓
 Hidden Layer 1: hidden_units nodes, ReLU + Dropout
@@ -435,13 +450,14 @@ Output: K nodes (one per major category), Softmax
 
 ### Feature 1: Callbacks
 
-Keras **callbacks** are objects that can inspect and modify training at the end
-of each epoch. PyTorch has no built-in equivalent — you write a training loop
-and add your own logic. Keras callbacks are first-class objects that plug
-directly into `model.fit()`.
+Keras **callbacks** are objects that can inspect and modify training at
+the end of each epoch. PyTorch has no built-in equivalent — you write a
+training loop and add your own logic. Keras callbacks are first-class
+objects that plug directly into `model.fit()`.
 
-The most important for us is **early stopping**: we specify a maximum number of
-epochs, but allow training to halt early if the validation loss stops improving.
+The most important for us is **early stopping**: we specify a maximum
+number of epochs, but allow training to halt early if the validation
+loss stops improving.
 
 ```{r early-stopping-demo, eval=FALSE}
 # This is what Keras runs internally when you pass callbacks via set_engine()
@@ -452,10 +468,11 @@ callback_early_stopping(
 )
 ```
 
-`restore_best_weights = TRUE` is subtle but important: without it, you get the
-weights from the *last* epoch, which may be worse than an earlier checkpoint.
-Keras handles this bookkeeping for you. In PyTorch you would save a checkpoint
-manually at each epoch and reload it at the end.
+`restore_best_weights = TRUE` is subtle but important: without it, you
+get the weights from the *last* epoch, which may be worse than an
+earlier checkpoint. Keras handles this bookkeeping for you. In PyTorch
+you would save a checkpoint manually at each epoch and reload it at the
+end.
 
 Other useful callbacks you can pass the same way:
 
@@ -478,16 +495,16 @@ callback_model_checkpoint(
 ```
 
 You can combine multiple callbacks in a list — Keras runs all of them in
-sequence at the end of each epoch. All of this is in Keras's standard library.
-PyTorch users typically reach for separate packages (`lightning`, `ignite`) or
-write this infrastructure themselves.
+sequence at the end of each epoch. All of this is in Keras's standard
+library. PyTorch users typically reach for separate packages
+(`lightning`, `ignite`) or write this infrastructure themselves.
 
 ### Feature 2: `validation_split`
 
-When you pass `validation_split = 0.2` to `set_engine("keras", ...)`, Keras
-automatically holds out the last 20% of the training data (by row order) as a
-validation set. This validation set is used by callbacks to monitor performance
-— it is not the test set.
+When you pass `validation_split = 0.2` to `set_engine("keras", ...)`,
+Keras automatically holds out the last 20% of the training data (by row
+order) as a validation set. This validation set is used by callbacks to
+monitor performance — it is not the test set.
 
 In PyTorch you would split the `DataLoader` manually, or use a
 `SubsetRandomSampler`. Keras does it in one argument.
@@ -499,19 +516,20 @@ In PyTorch you would split the `DataLoader` manually, or use a
 # within each fold's training run.
 ```
 
-> **Important distinction:** The 20% `validation_split` inside Keras is *not*
-> the same as the tidymodels CV folds. The CV folds evaluate which
-> hyperparameter combination is best. The internal `validation_split` gives the
-> early stopping callback its signal within each individual training run. They
-> are nested: for each fold/grid-point combination, Keras trains on 80% of that
-> fold's training data and monitors loss on the other 20%.
+> **Important distinction:** The 20% `validation_split` inside Keras is
+> *not* the same as the tidymodels CV folds. The CV folds evaluate which
+> hyperparameter combination is best. The internal `validation_split`
+> gives the early stopping callback its signal within each individual
+> training run. They are nested: for each fold/grid-point combination,
+> Keras trains on 80% of that fold's training data and monitors loss on
+> the other 20%.
 
 ### Feature 3: Training History
 
-Every Keras `model.fit()` call returns a `History` object with epoch-by-epoch
-loss and metric values for both training and validation. Through the parsnip
-interface this is less directly accessible, but when you use Keras directly you
-get it for free:
+Every Keras `model.fit()` call returns a `History` object with
+epoch-by-epoch loss and metric values for both training and validation.
+Through the parsnip interface this is less directly accessible, but when
+you use Keras directly you get it for free:
 
 ```{r history-demo, eval=FALSE}
 # Direct Keras API (outside of tidymodels)
@@ -526,10 +544,10 @@ history <- model %>% fit(
 plot(history)
 ```
 
-In PyTorch you append to a list inside your training loop. Keras returns it
-automatically.
+In PyTorch you append to a list inside your training loop. Keras returns
+it automatically.
 
----
+------------------------------------------------------------------------
 
 ## Model Specification
 
@@ -556,17 +574,18 @@ keras_spec <- mlp(
   set_mode("classification")
 ```
 
-**The `penalty`/`dropout` constraint.** The Keras parsnip engine does not allow
-`penalty` (L2 regularization) and `dropout` to be tuned simultaneously in a
-single `mlp()` call. This is an engine-level limitation, not a Keras limitation.
-If you need both, the cleanest solution is to run two separate tuning workflows
-(dropout-only and L2-only) and compare their best configurations. We focus on
-dropout here.
+**The `penalty`/`dropout` constraint.** The Keras parsnip engine does
+not allow `penalty` (L2 regularization) and `dropout` to be tuned
+simultaneously in a single `mlp()` call. This is an engine-level
+limitation, not a Keras limitation. If you need both, the cleanest
+solution is to run two separate tuning workflows (dropout-only and
+L2-only) and compare their best configurations. We focus on dropout
+here.
 
 **The `learn_rate` situation.** The Keras parsnip engine does not expose
-`learn_rate` as a tunable parameter through `mlp()`. Adam's default (0.001) is
-used. If you need to tune the learning rate, you can pass a custom optimizer
-through engine arguments:
+`learn_rate` as a tunable parameter through `mlp()`. Adam's default
+(0.001) is used. If you need to tune the learning rate, you can pass a
+custom optimizer through engine arguments:
 
 ```{r lr-engine-arg, eval=FALSE}
 # Advanced: custom learning rate via engine argument
@@ -577,7 +596,7 @@ mlp(...) %>%
   )
 ```
 
----
+------------------------------------------------------------------------
 
 ## Workflow
 
@@ -587,16 +606,17 @@ els_workflow <- workflow() %>%
   add_model(keras_spec)
 ```
 
----
+------------------------------------------------------------------------
 
 ## Hyperparameter Tuning
 
 ### Tuning Grid
 
-We'll use a space-filling Latin hypercube design. Rather than an exhaustive
-grid (which scales as $k^p$ where $k$ is levels and $p$ is parameters), a
-space-filling design spreads points evenly across the hyperparameter space,
-giving much better coverage with far fewer evaluations.
+We'll use a space-filling Latin hypercube design. Rather than an
+exhaustive grid (which scales as $k^p$ where $k$ is levels and $p$ is
+parameters), a space-filling design spreads points evenly across the
+hyperparameter space, giving much better coverage with far fewer
+evaluations.
 
 ```{r tuning-grid}
 set.seed(2002)
@@ -729,8 +749,9 @@ best_params
 final_workflow <- finalize_workflow(els_workflow, best_params)
 ```
 
-`last_fit()` fits the finalized model on the **full training set** and evaluates
-it on the held-out **test set**. This is the only time the test set is touched.
+`last_fit()` fits the finalized model on the **full training set** and
+evaluates it on the held-out **test set**. This is the only time the
+test set is touched.
 
 ```{r final-fit}
 set.seed(2002)
@@ -750,20 +771,21 @@ fitted_wf <- extract_workflow(final_fit)
 #final_fit <- readRDS(here("scripts","final_fit.rds"))
 ```
 
-
 ## Evaluation
 
 ### Why ROC AUC for an Imbalanced Multinomial Outcome?
 
-Accuracy is a poor metric here. If Business majors make up 25% of the sample,
-a classifier that always predicts "Business" achieves 25% accuracy — not
-meaningfully worse than a model that actually learned something. ROC AUC
-sidesteps this by evaluating the model's ability to *rank* classes, not just
-assign the most common one. We use **macro-weighted** AUC, which averages
-one-vs-rest AUC scores weighted by class frequency.
+Accuracy is a poor metric here. If Business majors make up 21% of the
+sample, a classifier that always predicts "Business" achieves 21%
+accuracy — not meaningfully worse than a model that actually learned
+something. ROC AUC sidesteps this by evaluating the model's ability to
+*rank* classes, not just assign the most common one. We use
+**macro-weighted** AUC, which averages one-vs-rest AUC scores weighted
+by class frequency.
 
-Multinomial log-loss (`mn_log_loss`) is also reported; it penalizes confident
-wrong predictions heavily, which is useful for calibration assessment.
+Multinomial log-loss (`mn_log_loss`) is also reported; it penalizes
+confident wrong predictions heavily, which is useful for calibration
+assessment.
 
 ### Overall Metrics
 
@@ -855,7 +877,6 @@ test_preds %>%
   )
 ```
 
-
 ### Per-Class Precision, Recall, and F1
 
 ```{r per-class-metrics}
@@ -874,51 +895,84 @@ per_class %>%
   kable_styling(bootstrap_options = c("striped", "condensed"))
 ```
 
----
+------------------------------------------------------------------------
 
 ## Variable Importance
 
-Keras models do not have interpretable coefficients — there is no `coef()`
-method. This is the tradeoff for the nonlinearity. We recover feature importance
-via **permutation**: for each predictor, we shuffle its values across all
-observations, generate new predictions, and measure how much the model's
-macro-weighted ROC AUC drops. A large drop means the model relied heavily on
-that feature.
+Keras models do not have interpretable coefficients — there is no
+`coef()` method. This is the tradeoff for the nonlinearity. We recover
+feature importance via **permutation**: for each predictor, we shuffle
+its values across all observations, generate new predictions, and
+measure how much the model's macro-weighted ROC AUC drops. A large drop
+means the model relied heavily on that feature.
 
-**Permutation importance** is the standard approach for interpreting models — like neural networks — that have no coefficients to read off directly.
+**Permutation importance** is the standard approach for interpreting
+models — like neural networks — that have no coefficients to read off
+directly.
 
-The core idea is to ask: *how much does the model's performance degrade when it can no longer use a particular feature?* We operationalize this by destroying the feature's information content without changing the shape of the data. Rather than removing the column entirely (which would break the model's input dimensions), we shuffle its values randomly across all observations. This severs the relationship between that feature and the outcome while leaving everything else intact.
+The core idea is to ask: *how much does the model's performance degrade
+when it can no longer use a particular feature?* We operationalize this
+by destroying the feature's information content without changing the
+shape of the data. Rather than removing the column entirely (which would
+break the model's input dimensions), we shuffle its values randomly
+across all observations. This severs the relationship between that
+feature and the outcome while leaving everything else intact.
 
 Concretely, for each predictor we:
 
-1. Start with a **baseline** — run the fitted model on a held-out sample and record its macro-weighted ROC AUC. This is the model's performance when it has full access to all features.
+1.  Start with a **baseline** — run the fitted model on a held-out
+    sample and record its macro-weighted ROC AUC. This is the model's
+    performance when it has full access to all features.
 
-2. **Permute** — randomly reorder the values of one predictor column, so that each student now has some other student's value for that variable. The model still sees a number in that column; it just no longer carries real information about that student.
+2.  **Permute** — randomly reorder the values of one predictor column,
+    so that each student now has some other student's value for that
+    variable. The model still sees a number in that column; it just no
+    longer carries real information about that student.
 
-3. **Re-score** — run the model again on the permuted data and record the new AUC.
+3.  **Re-score** — run the model again on the permuted data and record
+    the new AUC.
 
-4. **Importance = baseline AUC − permuted AUC.** If the feature mattered, the model's ability to rank students by their true major deteriorates noticeably. If the feature was irrelevant or redundant, the AUC barely changes.
+4.  **Importance = baseline AUC − permuted AUC.** If the feature
+    mattered, the model's ability to rank students by their true major
+    deteriorates noticeably. If the feature was irrelevant or redundant,
+    the AUC barely changes.
 
-We repeat steps 2–4 five times (`nsim = 5`) for each feature and average the drops, because any single shuffle is one random draw — averaging over several gives a more stable estimate.
+We repeat steps 2–4 five times (`nsim = 5`) for each feature and average
+the drops, because any single shuffle is one random draw — averaging
+over several gives a more stable estimate.
 
-**Why ROC AUC specifically?** Because our outcome is multinomial and imbalanced. Accuracy would be dominated by the most common major categories. Macro-weighted AUC evaluates the model's ability to discriminate each class from all others, weighted by class frequency, so every major field contributes to the score roughly in proportion to how many students are in it.
+**Why ROC AUC specifically?** Because our outcome is multinomial and
+imbalanced. Accuracy would be dominated by the most common major
+categories. Macro-weighted AUC evaluates the model's ability to
+discriminate each class from all others, weighted by class frequency, so
+every major field contributes to the score roughly in proportion to how
+many students are in it.
 
-**Why a 75% sample rather than the full training set?** Purely for speed — we are running hundreds of predict calls (one per feature per simulation). The 75% sample is drawn once and held fixed across all permutations so that the baseline and every permuted AUC are computed on exactly the same rows, making the differences comparable.
+**Why a 75% sample rather than the full training set?** Purely for speed
+— we are running hundreds of predict calls (one per feature per
+simulation). The 75% sample is drawn once and held fixed across all
+permutations so that the baseline and every permuted AUC are computed on
+exactly the same rows, making the differences comparable.
 
-**What the numbers mean:** An importance of 0.03 means permuting that feature caused macro-weighted AUC to drop by about 3 percentage points on average. A feature near zero had essentially no effect when scrambled — either the model wasn't using it, or its information was fully recoverable from correlated predictors that remained intact.
+**What the numbers mean:** An importance of 0.03 means permuting that
+feature caused macro-weighted AUC to drop by about 3 percentage points
+on average. A feature near zero had essentially no effect when scrambled
+— either the model wasn't using it, or its information was fully
+recoverable from correlated predictors that remained intact.
 
-`vip::vi_permute()` does not support multiclass probability metrics — its
-`metric` argument passes vectors to a scalar function, but `roc_auc_vec()` for
-multiclass requires a full probability matrix. We therefore implement the loop
-directly, which is only slightly more code and makes the algorithm completely
-transparent.
+`vip::vi_permute()` does not support multiclass probability metrics —
+its `metric` argument passes vectors to a scalar function, but
+`roc_auc_vec()` for multiclass requires a full probability matrix. We
+therefore implement the loop directly, which is only slightly more code
+and makes the algorithm completely transparent.
 
 The logic is:
 
-1. Get a baseline AUC on a 75% sample of the training data.
-2. For each predictor column, shuffle its values (breaking the predictor-outcome
-   association), predict, compute AUC, and record the drop from baseline.
-3. Repeat `nsim` times and average the drops.
+1.  Get a baseline AUC on a 75% sample of the training data.
+2.  For each predictor column, shuffle its values (breaking the
+    predictor-outcome association), predict, compute AUC, and record the
+    drop from baseline.
+3.  Repeat `nsim` times and average the drops.
 
 ```{r vip-helpers}
 # Compute macro-weighted ROC AUC from a fitted workflow and a data frame.
@@ -946,7 +1000,6 @@ permute_one <- function(fitted_wf, data, col, nsim) {
     mean()
 }
 ```
-
 
 ```{r vip}
 # Pull the raw prob matrix once per permutation at the top level,
@@ -996,8 +1049,6 @@ vip_scores <- tibble(Variable = pred_features) %>%
 write_rds(vip_scores,file=here("scripts","vip_scores.rds"))
 ```
 
-
-
 ```{r load-vip, eval=!fit_model}
 vip_scores <- readRDS(here("scripts","vip_scores.rds"))
 ```
@@ -1019,26 +1070,26 @@ vip_scores %>%
 
 **Caveats to keep in mind:**
 
-- Correlated features *understate* individual importance — if `bytxmstd` and
-  `bytxrstd` are correlated, permuting one still leaves the other intact, so
-  the model can partially recover. This leads to each appearing less important
-  than they collectively are.
-- Importance reflects *model reliance*, not causal effect. A feature the model
-  uses heavily might have that relationship for reasons specific to this dataset
-  or this architecture.
-- Scores are post-hoc and specific to this fitted model. A different model with
-  different hyperparameters could produce a somewhat different importance
-  ranking.
+-   Correlated features *understate* individual importance — if
+    `bytxmstd` and `bytxrstd` are correlated, permuting one still leaves
+    the other intact, so the model can partially recover. This leads to
+    each appearing less important than they collectively are.
+-   Importance reflects *model reliance*, not causal effect. A feature
+    the model uses heavily might have that relationship for reasons
+    specific to this dataset or this architecture.
+-   Scores are post-hoc and specific to this fitted model. A different
+    model with different hyperparameters could produce a somewhat
+    different importance ranking.
 
----
+------------------------------------------------------------------------
 
 ## Keras vs. PyTorch: A Summary
 
-Here is a consolidated comparison of the features we used today, with their
-PyTorch equivalents:
+Here is a consolidated comparison of the features we used today, with
+their PyTorch equivalents:
 
 | Feature | Keras | PyTorch |
-|---|---|---|
+|----|----|----|
 | Early stopping | `callback_early_stopping()` in `set_engine()` | Write your own loop logic or use Lightning |
 | Validation split | `validation_split = 0.2` argument | Split `DataLoader` manually |
 | Learning rate scheduling | `callback_reduce_lr_on_plateau()` | `torch.optim.lr_scheduler.*` |
@@ -1047,20 +1098,21 @@ PyTorch equivalents:
 | Model checkpointing | `callback_model_checkpoint()` | Manual `torch.save()` in loop |
 | Softmax + cross-entropy output | Automatic for multiclass | Specify `nn.Softmax` + `nn.CrossEntropyLoss` explicitly |
 
-The pattern is consistent: Keras externalizes infrastructure that PyTorch
-internalizes. Keras is narrower but faster to stand up; PyTorch is more
-expressive but requires more code. For applied research where model architecture
-is standard and the domain problem is the hard part, Keras's defaults often get
-you where you need to go.
+The pattern is consistent: Keras externalizes infrastructure that
+PyTorch internalizes. Keras is narrower but faster to stand up; PyTorch
+is more expressive but requires more code. For applied research where
+model architecture is standard and the domain problem is the hard part,
+Keras's defaults often get you where you need to go.
 
----
+------------------------------------------------------------------------
 
 ## Next Steps
 
-In the next lecture we will take the fitted model and use it for **subgroup
-analysis** by race and gender — the variables we deliberately withheld from
-the predictor set. We will look at whether the model's errors are distributed
-evenly across groups or concentrated in particular subpopulations, and discuss
-what that means for questions of algorithmic fairness in educational contexts.
+In the next lecture we will take the fitted model and use it for
+**subgroup analysis** by race and gender — the variables we deliberately
+withheld from the predictor set. We will look at whether the model's
+errors are distributed evenly across groups or concentrated in
+particular subpopulations, and discuss what that means for questions of
+algorithmic fairness in educational contexts.
 
----
+------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 ---
 title: "Lecture 19: Subgroup Analysis and Algorithmic Fairness"
-output: github_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -36,11 +36,10 @@ By the end of this lecture you will be able to:
    predictions.
 2. Decompose overall performance metrics by race, gender, and the intersection
    of the two.
-3. Visualize and interpret disparities in accuracy, ROC AUC, precision, recall,
-   and calibration.
+3. Visualize and interpret disparities in accuracy, ROC AUC, sensitivity,
+   specificity, and calibration.
 4. Distinguish between different formal definitions of fairness and explain why
    they cannot all hold simultaneously.
-
 
 ---
 
@@ -48,12 +47,11 @@ By the end of this lecture you will be able to:
 
 ```{r libraries}
 library(tidyverse)
-library(haven)
 library(here)
 library(janitor)
 library(tidymodels)
 library(kableExtra)
-library(patchwork)  # composing multi-panel plots
+library(patchwork)  
 ```
 
 ```{r theme}
@@ -101,9 +99,9 @@ normative. Today we formalize that.
 ## Loading Artifacts from Lecture 18
 
 ```{r load-artifacts}
-analytic_sample <- readRDS(here::here("analytic_sample.rds"))
-final_fit       <- readRDS(here::here("final_fit.rds"))
-cip_labels      <- read_csv(here::here("cip2_labels.csv"),
+analytic_sample <- readRDS(here("scripts","analytic_sample.rds"))
+final_fit       <- readRDS(here("scripts","final_fit.rds"))
+cip_labels      <- read_csv(here("scripts","cip2_labels.csv"),
                              show_col_types = FALSE)
 
 label_lookup <- cip_labels %>%
@@ -144,6 +142,9 @@ output.
 |------|-------|
 | 1 | Male |
 | 2 | Female |
+
+ELS uses sex as a category, with two possible categories, male and female. Most of the time
+the actual thing we're interested in is gender. Sex is biological and is generally meant to refer to genetic expression resulting in having different sex organs, but there are definitely more than two sexes. Most of the time in social science we're not interested in sex but gender. Gender is an expression-- it's how the person presents themselves to the world, and doesn't refer to biological characteristics of the individual. For gender, we'd want to use men, women, nonbinary, other at a minimum. But, we're stuck with the data we have, so that's what we'll use.  
 
 ```{r recode-subgroups}
 recode_subgroups <- function(df) {
@@ -245,21 +246,74 @@ into different major categories than the other.
 
 ### Confusion Matrices by Sex
 
-```{r conf-mat-by-sex, fig.width=14, fig.height=7}
-# Compute confusion matrix separately for each sex
+```{r conf-mat-by-sex, fig.width=14, fig.height=9}
+# Build a tidy, labelled confusion matrix so we can display human-readable
+# major names on both axes. The diagonal reads as sensitivity for each class
+# (row-normalised: n in cell / row total).
+
+make_conf_mat_df <- function(df) {
+  all_codes <- levels(df$cip2)
+
+  ordered_labels <- label_lookup %>%
+    filter(as.character(cip2_collapsed_code) %in% all_codes) %>%
+    arrange(match(as.character(cip2_collapsed_code), all_codes)) %>%
+    pull(cip2_collapsed_label) %>%
+    str_wrap(width = 22)
+
+  df %>%
+    count(truth = cip2, predicted = .pred_class, .drop = FALSE) %>%
+    group_by(truth) %>%
+    mutate(row_pct = n / sum(n)) %>%
+    ungroup() %>%
+    left_join(
+      label_lookup %>%
+        mutate(truth_label = str_wrap(cip2_collapsed_label, width = 22)) %>%
+        select(cip2_collapsed_code, truth_label),
+      by = join_by(truth == cip2_collapsed_code)
+    ) %>%
+    left_join(
+      label_lookup %>%
+        mutate(pred_label = str_wrap(cip2_collapsed_label, width = 22)) %>%
+        select(cip2_collapsed_code, pred_label),
+      by = join_by(predicted == cip2_collapsed_code)
+    ) %>%
+    mutate(
+      truth_label = factor(truth_label, levels = ordered_labels),
+      pred_label  = factor(pred_label,  levels = ordered_labels)
+    )
+}
+
 make_conf_mat_plot <- function(df, group_label) {
-  conf_mat(df, truth = cip2, estimate = .pred_class) %>%
-    autoplot(type = "heatmap") +
-    scale_fill_gradient(low = "white", high = "#2C7BB6") +
+  make_conf_mat_df(df) %>%
+    ggplot(aes(x = pred_label, y = fct_rev(truth_label), fill = row_pct)) +
+    geom_tile(color = "white", linewidth = 0.35) +
+    geom_text(
+      aes(label = ifelse(n > 0, as.character(n), "")),
+      size = 2.5, color = "grey20"
+    ) +
+    scale_fill_gradient(
+      low    = "white",
+      high   = "#2C7BB6",
+      limits = c(0, 1),
+      labels = scales::percent_format(accuracy = 1),
+      name   = "Row %\n(sensitivity)"
+    ) +
+    scale_x_discrete(position = "top") +
     labs(
       title    = group_label,
-      subtitle = paste0("n = ", nrow(df))
+      subtitle = paste0("n = ", nrow(df),
+                        "  |  Fill = % of true major (row) predicted as each column"),
+      x = NULL,
+      y = "True major"
     ) +
     theme_els() +
     theme(
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
-      axis.text.y = element_text(size = 7),
-      legend.position = "none"
+      axis.text.x      = element_text(angle = -40, hjust = 1, size = 6.5),
+      axis.text.y      = element_text(size = 6.5),
+      axis.title.y     = element_text(size = 9),
+      legend.position  = "right",
+      legend.key.width = unit(0.4, "cm"),
+      panel.grid       = element_blank()
     )
 }
 
@@ -271,7 +325,7 @@ conf_plots_sex <- test_preds %>%
 conf_plots_sex[[1]] + conf_plots_sex[[2]] +
   plot_annotation(
     title    = "Confusion Matrices by Sex",
-    subtitle = "Rows: true class  |  Columns: predicted class",
+    subtitle = "Rows = true major  |  Columns = predicted major  |  Diagonal = sensitivity for that class",
     theme    = theme_els()
   )
 ```
@@ -300,18 +354,17 @@ f1_by_sex_major <- test_preds %>%
     df %>%
       group_by(cip2) %>%
       summarise(
-        n         = n(),
-        precision = precision_vec(truth = cip2, estimate = .pred_class),
-        recall    = recall_vec(truth = cip2, estimate = .pred_class),
-        f1        = f_meas_vec(truth = cip2, estimate = .pred_class),
-        .groups   = "drop"
+        n           = n(),
+        sensitivity = sens_vec(truth = cip2, estimate = .pred_class),
+        specificity = spec_vec(truth = cip2, estimate = .pred_class),
+        f1          = f_meas_vec(truth = cip2, estimate = .pred_class),
+        .groups     = "drop"
       )
   }) %>%
   left_join(label_lookup, by = join_by(cip2 == cip2_collapsed_code))
 
 f1_by_sex_major %>%
   filter(!is.na(cip2_collapsed_label)) %>%
-  mutate(cip2_collapsed_label = fct_reorder(cip2_collapsed_label, f1)) %>%
   ggplot(aes(x = f1, y = cip2_collapsed_label, fill = sex_label)) +
   geom_col(position = "dodge", alpha = 0.85) +
   scale_fill_manual(values = c(Male = "#2C7BB6", Female = "#D7191C")) +
@@ -337,6 +390,7 @@ amplify those patterns.
 ```{r roc-auc-by-sex}
 roc_auc_by_sex <- test_preds %>%
   filter(!is.na(sex_label)) %>%
+  select(-".pred_class") %>%
   group_by(sex_label) %>%
   roc_auc(
     truth      = cip2,
@@ -395,6 +449,7 @@ accuracy_by_race %>%
 ```{r roc-auc-by-race}
 roc_auc_by_race <- test_preds %>%
   filter(!is.na(race_label)) %>%
+  select(-".pred_class") %>%
   group_by(race_label) %>%
   group_modify(function(df, grp) {
     if (nrow(df) < 30) return(tibble(.estimate = NA_real_))
@@ -513,6 +568,7 @@ intersect_accuracy %>%
 ```{r intersectional-roc, fig.height=6}
 intersect_roc <- test_preds %>%
   filter(!is.na(race_label), !is.na(sex_label)) %>%
+  select(-".pred_class") %>%
   group_by(race_label, sex_label) %>%
   group_modify(function(df, grp) {
     if (nrow(df) < 30) return(tibble(roc_auc = NA_real_, n = nrow(df)))
@@ -562,7 +618,7 @@ test_preds %>%
   filter(!is.na(race_label)) %>%
   mutate(
     max_prob = pmap_dbl(
-      select(., starts_with(".pred_")),
+      select(., starts_with(".pred_"), -".pred_class"),
       ~ max(c(...))
     ),
     correct = (cip2 == .pred_class)
@@ -595,9 +651,9 @@ categories does the model fail most for underrepresented groups? This is where
 subgroup analysis connects directly to the substantive question — who gets
 routed where.
 
-```{r recall-by-race-major, fig.height=9}
-# Per-class recall by race
-recall_by_race_major <- test_preds %>%
+```{r sensitivity-by-race-major, fig.height=9}
+# Per-class sensitivity by race
+sensitivity_by_race_major <- test_preds %>%
   filter(!is.na(race_label)) %>%
   group_by(race_label) %>%
   group_modify(function(df, grp) {
@@ -605,27 +661,27 @@ recall_by_race_major <- test_preds %>%
     df %>%
       group_by(cip2) %>%
       summarise(
-        n_true    = n(),
-        n_correct = sum(.pred_class == cip2),
-        recall    = n_correct / n_true,
-        .groups   = "drop"
+        n_true      = n(),
+        n_correct   = sum(.pred_class == cip2),
+        sensitivity = n_correct / n_true,
+        .groups     = "drop"
       )
   }) %>%
   left_join(label_lookup, by = join_by(cip2 == cip2_collapsed_code)) %>%
   filter(!is.na(cip2_collapsed_label))
 
-recall_by_race_major %>%
+sensitivity_by_race_major %>%
   filter(n_true >= 10) %>%   # suppress very small within-group cells
-  mutate(cip2_collapsed_label = fct_reorder(cip2_collapsed_label, recall)) %>%
-  ggplot(aes(x = recall, y = cip2_collapsed_label, fill = race_label)) +
+  mutate(cip2_collapsed_label = fct_reorder(cip2_collapsed_label, sensitivity)) %>%
+  ggplot(aes(x = sensitivity, y = cip2_collapsed_label, fill = race_label)) +
   geom_col(position = "dodge", alpha = 0.85) +
   scale_fill_brewer(palette = "Set2") +
   scale_x_continuous(labels = scales::percent_format(accuracy = 1),
                      limits = c(0, 1)) +
   labs(
-    title    = "Per-Major Recall by Race",
+    title    = "Per-Major Sensitivity by Race",
     subtitle = "Among true members of each major, what fraction did the model correctly identify?",
-    x        = "Recall",
+    x        = "Sensitivity",
     y        = NULL,
     fill     = "Race"
   ) +
@@ -648,9 +704,9 @@ cannot hold simultaneously when base rates differ across groups.
 classification is equal across groups. If the model predicts "STEM" for 20% of
 White students, it should predict "STEM" for 20% of Black students too.
 
-**Equalized odds**: The true positive rate (recall) and false positive rate are
-equal across groups. The model is equally good at detecting true STEM majors,
-and equally cautious about false alarms, regardless of race.
+**Equalized odds**: The sensitivity and false positive rate are equal across
+groups. The model is equally good at detecting true STEM majors, and equally
+cautious about false alarms, regardless of race.
 
 **Calibration** (sufficiency): Among students to whom the model assigns a 70%
 probability of being a STEM major, 70% should actually be STEM majors —
@@ -669,7 +725,7 @@ decision, not a technical one. A researcher building a major prediction tool
 must decide which kind of error — false inclusions or false exclusions from
 certain major pathways — is more costly, and for whom. That decision cannot be
 made by optimizing a loss function. It requires normative reasoning about the
-purposes of prediction and the context in which it will be used.
+purposes of prediction and the context in which it will be used. It always, always comes back to the use case. 
 
 ```{r fairness-criteria-check}
 # Do base rates differ across racial groups?
@@ -700,7 +756,7 @@ possible explanations. These are not mutually exclusive.
 **Representation in training data.** If Black or Hispanic students are
 underrepresented in the training data, the model has seen fewer examples of
 their patterns and will perform worse on them at test time. This is a
-*data problem*, not a model problem — but the model amplifies it.
+data problem, not a model problem — but the model amplifies it.
 
 **Proxy features.** We excluded race and gender from the predictor set. But
 many of the predictors we did include — parental education, income, school
@@ -713,14 +769,14 @@ machine learning.
 transcripts — may be measured differently or with different error rates across
 groups. If certain students are more likely to switch majors after initial
 enrollment, their transcript major may be less stable, adding noise to the
-labels for that group.
+labels for that group. This is less likely in this application but still a real issue. 
 
 **Structural inequality in the predictors themselves.** A Black student and a
 White student with the same math test score are not in the same position if
 they attended schools with very different resource levels, course offerings, or
 grading standards. The test score means something different in context, but the
-model treats it as a number. This is the deepest problem — it applies even if
-we solve the data and proxy issues.
+model treats it as a number. It's about discrimination-- the same numbers are treated 
+differently for different people based on their minoritized status. This is the deepest problem — it applies even if we solve the data and proxy issues.
 
 ```{r proxy-check, fig.height=5}
 # Do the proxy variables vary by race? This is expected and not surprising,
@@ -808,7 +864,7 @@ performance reporting is increasingly expected — and in some regulatory
 contexts, required. A minimal responsible reporting template includes:
 
 1. **Subgroup N's and proportions** in train and test sets.
-2. **Accuracy, precision, recall, and F1** disaggregated by relevant subgroups.
+2. **Accuracy, sensitivity, specificity, and F1** disaggregated by relevant subgroups.
 3. **ROC AUC** disaggregated, with note on small-cell suppression thresholds.
 4. **Calibration plots** by subgroup (not covered today but important for
    high-stakes deployment).
@@ -848,4 +904,12 @@ summary_table %>%
         caption = "Subgroup performance summary (accuracy; groups with n < 20 suppressed)") %>%
   kable_styling(bootstrap_options = c("striped", "condensed")) %>%
   pack_rows(index = table(summary_table$subgroup_type))
+```
+
+---
+
+## Session Info
+
+```{r session-info}
+sessioninfo::session_info()
 ```
