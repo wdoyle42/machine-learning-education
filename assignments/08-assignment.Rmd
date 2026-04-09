@@ -4,7 +4,6 @@ output: github_document
 
 ---
 
-
 # Homework Assignment: Handwritten Letter Recognition with Neural Networks
 
 ## Overview
