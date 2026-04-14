@@ -8,7 +8,7 @@ April 12: Assignment 8
 
 April 14: Conformal Prediction intervals
 
-April 16: Revisit project design
+April 16: Revisit project design; stratifying on rare outcomes
 
 April 19: Assignment 9 (last one)
 
