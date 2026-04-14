@@ -68,7 +68,6 @@ For regression, the natural nonconformity score is the **absolute residual**:
 
 $$s_i = |y_i - \hat{y}_i|$$
 
-A score of 0 means a perfect prediction; a large score means the model was badly surprised.
 
 ### 2.1 Score the calibration set
 
