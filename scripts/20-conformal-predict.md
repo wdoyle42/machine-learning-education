@@ -1,0 +1,1069 @@
+Conformal Prediction for Individual-Level Uncertainty
+================
+Will Doyle
+2025-04-01
+
+``` r
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(probably)   # conformal inference via tidymodels
+library(xgboost)
+```
+
+------------------------------------------------------------------------
+
+# Part 1: The Problem with Point Predictions
+
+Peviously we fit an XGBoost model to predict whether a student passes an
+online course in the Open University Learning Analytics Dataset (OULAD).
+Our best model produced a predicted probability for every student —
+something like 0.73 for one student, 0.41 for another.
+
+But that number is incomplete. It answers “what does the model think?”
+without answering “how much should we trust that answer?” A 0.73 from a
+well-calibrated model on a familiar type of student is a very different
+thing from a 0.73 on an unusual student where the model is
+extrapolating.
+
+Standard practice is to use the model’s internal class probabilities
+directly as uncertainty estimates. For complex, non-parametric models
+like XGBoost — which make no assumptions about the data-generating
+process — this is problematic. The model’s internal probabilities may be
+**miscalibrated**: systematically too confident in some regions of the
+feature space and too uncertain in others. There is no easy way to audit
+them from the model alone.
+
+**Conformal prediction** offers a principled alternative. Rather than
+trusting the model’s internal uncertainty, it uses empirical evidence
+from held-out data to construct prediction sets with a rigorous,
+distribution-free guarantee: the true outcome is contained in the
+prediction set at least $(1 - \alpha)$% of the time — for any underlying
+model, regardless of its parametric form, and without requiring the data
+to follow any particular distribution.
+
+For individual students facing high-stakes predictions (intervention
+decisions, early warnings, resource allocation), that distinction
+matters.
+
+------------------------------------------------------------------------
+
+# Part 2: Conformal Prediction Theory
+
+## The Nonconformity Score
+
+Every conformal procedure is built around a nonconformity score — a
+number that measures how surprising a new observation is relative to the
+training data, as judged by the model.
+
+For a binary classification problem like ours, the natural score is:
+
+$$s_i = 1 - \hat{p}(y_i)$$
+
+where $\hat{p}(y_i)$ is the predicted probability the model assigns to
+the true class label. If the model correctly and confidently predicts
+student $i$ passed, then $\hat{p}(\text{passed})$ is close to 1 and
+$s_i \approx 0$. If the model was wrong or uncertain, $s_i$ is large.
+
+A large nonconformity score says: this observation does not conform well
+to what the model has learned — it is “surprising” given the training
+evidence.
+
+## The Calibration Set and Quantile Threshold
+
+The key to conformal inference is evaluating these scores on data the
+model has never seen — a held-out calibration set. The procedure:
+
+1.  Fit the model on a training set.
+2.  Compute $s_1, \ldots, s_n$ on the calibration set.
+3.  For target coverage $1 - \alpha$, find the threshold:
+
+$$\hat{q} = \text{Quantile}\!\left(\{s_1, \ldots, s_n\},\ \frac{\lceil (n+1)(1-\alpha) \rceil}{n}\right)$$
+
+4.  For a new test observation, include class $k$ in the prediction set
+    if:
+
+$$1 - \hat{p}(k) \leq \hat{q}$$
+
+That is, include any class whose nonconformity score falls at or below
+the threshold.
+
+The $\frac{n+1}{n}$ correction accounts for the fact that we need
+coverage to hold for the new point, not just the calibration points. As
+$n \to \infty$ it vanishes.
+
+## Why the Guarantee Holds
+
+The guarantee rests on the assumption of exchangeability — roughly, that
+the calibration observations and the new test observation are drawn from
+the same distribution. Under this condition, the new observation’s score
+is equally likely to land anywhere in the distribution of calibration
+scores, so the probability it exceeds the $(1-\alpha)$th quantile is at
+most $\alpha$.
+
+This is a finite-sample, distribution-free result. No normality. No
+parametric assumptions. No requirement that the model be well-specified.
+The model is just a black box that produces a nonconformity score.
+
+## What the Output Looks Like
+
+For a binary outcome, each test student receives one of three prediction
+set types:
+
+| Set | Meaning |
+|----|----|
+| `{passed}` | Model is confident this student will pass; only “passed” is plausible |
+| `{not_passed}` | Model is confident this student will not pass |
+| `{passed, not_passed}` | Model is uncertain; both outcomes are plausible given the evidence |
+| `{}` | Rare anomaly — model assigns low probability to all classes; flags unusual observation |
+
+The size of the prediction set is a direct, honest measure of
+individual-level uncertainty: a singleton set is a confident prediction;
+a both-class set is an honest “I don’t know.”
+
+------------------------------------------------------------------------
+
+# Part 3: Data Setup
+
+We pick up from where the XGBoost lecture left off — the OULAD dataset,
+binary outcome of whether a student passed their online course.
+
+``` r
+ou <- read_csv("oulad.csv") %>%
+  mutate(result = fct_relevel(as_factor(result), c("passed", "not_passed"))) %>%
+  select(-final_result)
+```
+
+    ## Warning: One or more parsing issues, call `problems()` on your data frame for details,
+    ## e.g.:
+    ##   dat <- vroom(...)
+    ##   problems(dat)
+
+    ## Rows: 32593 Columns: 33
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr (10): code_module, code_presentation, gender, region, highest_education,...
+    ## dbl (22): id_student, num_of_prev_attempts, studied_credits, forumng, homepa...
+    ## lgl  (1): repeatactivity
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+For conformal prediction we need three distinct data partitions:
+
+- Training set: fit the XGBoost model
+- Calibration set: compute nonconformity scores, determine $\hat{q}$
+- Test set: evaluate coverage and inspect individual predictions
+
+``` r
+# 60% training + calibration, 40% test
+ou_split      <- initial_split(ou, prop = 0.6)
+ou_train_cal  <- training(ou_split)
+ou_test       <- testing(ou_split)
+
+# Within the training portion: 75% train, 25% calibration
+cal_split <- initial_split(ou_train_cal, prop = 0.75)
+ou_train  <- training(cal_split)
+ou_cal    <- testing(cal_split)
+```
+
+## Recipe and Model Specification
+
+Same recipe and model spec as the XGBoost lecture:
+
+``` r
+xgb_grid <- grid_space_filling(
+  tree_depth(),
+  min_n(),
+  loss_reduction(),
+  sample_size = sample_prop(),
+  finalize(mtry(), ou_train),
+  learn_rate(),
+  size = 30
+)
+```
+
+``` r
+xgb_spec <- boost_tree(
+  trees        = 100,
+  tree_depth   = tune(),   # controls tree complexity
+  min_n        = tune(),   # minimum observations per node
+  loss_reduction = tune(), # γ: minimum gain to accept a split
+  sample_size  = tune(),   # row subsampling fraction
+  mtry         = tune(),   # column subsampling per split
+  learn_rate   = tune()    # η: step size
+) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+```
+
+``` r
+ou_rec <- recipe(result ~ ., ou_train) %>%
+  update_role(id_student, new_role = "id") %>%
+  step_other(all_nominal_predictors(), threshold = 0.05) %>%
+  step_unknown(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors())
+```
+
+``` r
+ou_wf <- workflow() %>%
+  add_recipe(ou_rec) %>%
+  add_model(xgb_spec)
+```
+
+``` r
+fit_model <- FALSE
+
+if (fit_model) {
+  xg_tune_res <- tune_grid(
+    ou_wf,
+    grid      = xgb_grid,
+    resamples = ou_rs
+  )
+  save(xg_tune_res, file = "xg_tune_res.Rdata")
+} else {
+  load("xg_tune_res.Rdata")
+}
+```
+
+``` r
+best_auc <- select_best(xg_tune_res, metric = "roc_auc")
+
+final_xgb <- finalize_workflow(ou_wf, best_auc)
+
+xgb_fit<-fit(final_xgb,ou_train)
+```
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+------------------------------------------------------------------------
+
+# Part 4: Implementing Conformal Prediction from Scratch
+
+Working through the mechanics by hand makes the procedure transparent
+before we let a package automate it.
+
+## Step 1: Predict on the Calibration Set
+
+``` r
+cal_preds <- augment(xgb_fit, ou_cal)
+
+cal_preds %>%
+  select(result, .pred_passed, .pred_not_passed) %>%
+  head(8)
+```
+
+    ## # A tibble: 8 × 3
+    ##   result     .pred_passed .pred_not_passed
+    ##   <fct>             <dbl>            <dbl>
+    ## 1 passed          0.776              0.224
+    ## 2 not_passed      0.00382            0.996
+    ## 3 passed          0.841              0.159
+    ## 4 not_passed      0.0457             0.954
+    ## 5 not_passed      0.778              0.222
+    ## 6 passed          0.661              0.339
+    ## 7 not_passed      0.0455             0.954
+    ## 8 passed          0.900              0.100
+
+## Step 2: Compute Nonconformity Scores
+
+For each calibration student, the score is
+$1 - \hat{p}(\text{true class})$:
+
+``` r
+cal_scores <- cal_preds %>%
+  mutate(
+    true_class_prob = if_else(result == "passed", .pred_passed, .pred_not_passed),
+    score           = 1 - true_class_prob
+  )
+
+cal_scores %>%
+  select(result, .pred_passed, .pred_not_passed, true_class_prob, score) %>%
+  head(10)
+```
+
+    ## # A tibble: 10 × 5
+    ##    result     .pred_passed .pred_not_passed true_class_prob   score
+    ##    <fct>             <dbl>            <dbl>           <dbl>   <dbl>
+    ##  1 passed          0.776              0.224           0.776 0.224  
+    ##  2 not_passed      0.00382            0.996           0.996 0.00382
+    ##  3 passed          0.841              0.159           0.841 0.159  
+    ##  4 not_passed      0.0457             0.954           0.954 0.0457 
+    ##  5 not_passed      0.778              0.222           0.222 0.778  
+    ##  6 passed          0.661              0.339           0.661 0.339  
+    ##  7 not_passed      0.0455             0.954           0.954 0.0455 
+    ##  8 passed          0.900              0.100           0.900 0.100  
+    ##  9 not_passed      0.326              0.674           0.674 0.326  
+    ## 10 not_passed      0.0144             0.986           0.986 0.0144
+
+## Step 3: Find the Quantile Threshold
+
+``` r
+alpha   <- 0.10   # target: 90% coverage
+n       <- nrow(cal_scores)
+q_level <- min(ceiling((n + 1) * (1 - alpha)) / n, 1)
+q_hat   <- quantile(cal_scores$score, probs = q_level)
+
+cat("Calibration set size:", n, "\n")
+```
+
+    ## Calibration set size: 4889
+
+``` r
+cat("Quantile level used: ", round(q_level, 4), "\n")
+```
+
+    ## Quantile level used:  0.9002
+
+``` r
+cat("Score threshold q̂:  ", round(q_hat, 4), "\n")
+```
+
+    ## Score threshold q̂:   0.5598
+
+Let’s visualize the distribution of calibration scores and where
+$\hat{q}$ falls:
+
+``` r
+ggplot(cal_scores, aes(x = score)) +
+  geom_histogram(bins = 40, fill = "steelblue", color = "white", alpha = 0.85) +
+  geom_vline(xintercept = q_hat, color = "firebrick", linewidth = 1.2, linetype = "dashed") +
+  annotate(
+    "text", x = q_hat + 0.02, y = Inf, vjust = 2,
+    label = paste0("q\u0302 = ", round(q_hat, 3)),
+    color = "firebrick", size = 4
+  ) +
+  facet_wrap(~result, scales = "free_y") +
+  labs(
+    title    = "Distribution of calibration nonconformity scores by true outcome",
+    subtitle = paste0("Scores above the dashed line exceed the ", (1 - alpha) * 100, "% threshold"),
+    x        = "Nonconformity score  (1 \u2212 predicted probability of true class)",
+    y        = "Count"
+  ) +
+  theme_minimal()
+```
+
+![](20-conformal-predict_files/figure-gfm/score_distribution-1.png)<!-- -->
+
+Students correctly predicted with high confidence have scores near 0.
+Students where the model was uncertain or wrong have scores near 1.
+
+## Step 4: Build Prediction Sets on the Test Data
+
+``` r
+test_preds <- augment(xgb_fit, ou_test)
+
+conformal_sets <- test_preds %>%
+  mutate(
+    include_passed     = (1 - .pred_passed)     <= q_hat,
+    include_not_passed = (1 - .pred_not_passed) <= q_hat,
+    pred_set = case_when(
+      include_passed  & include_not_passed  ~ "{passed, not_passed}",
+      include_passed  & !include_not_passed ~ "{passed}",
+      !include_passed & include_not_passed  ~ "{not_passed}",
+      TRUE                                  ~ "{}"
+    )
+  )
+
+conformal_sets %>%
+  count(pred_set) %>%
+  mutate(pct = n / sum(n)) %>%
+  arrange(desc(n))
+```
+
+    ## # A tibble: 3 × 3
+    ##   pred_set                 n    pct
+    ##   <chr>                <int>  <dbl>
+    ## 1 {passed}              6348 0.487 
+    ## 2 {not_passed}          6186 0.474 
+    ## 3 {passed, not_passed}   504 0.0387
+
+## Step 5: Verify Empirical Coverage
+
+``` r
+coverage_check <- conformal_sets %>%
+  mutate(
+    covered = case_when(
+      result == "passed"     & include_passed     ~ TRUE,
+      result == "not_passed" & include_not_passed ~ TRUE,
+      TRUE                                        ~ FALSE
+    )
+  )
+
+coverage_check %>%
+  summarise(
+    empirical_coverage = mean(covered),
+    target_coverage    = 1 - alpha,
+    n_test             = n()
+  )
+```
+
+    ## # A tibble: 1 × 3
+    ##   empirical_coverage target_coverage n_test
+    ##                <dbl>           <dbl>  <int>
+    ## 1              0.894             0.9  13038
+
+Empirical coverage should meet or exceed 90%. The theoretical guarantee
+is at least $(1 - \alpha)$, and deviations are sampling noise.
+
+------------------------------------------------------------------------
+
+# Part 5: A Note on `probably` and Classification
+
+The `probably` package in tidymodels provides `int_conformal_split()`
+and `int_conformal_cv()`, but these are designed for **regression**
+problems. Internally they compute a numeric interval around `.pred` — a
+column that doesn’t exist for a classification model (which produces
+`.pred_passed` and `.pred_not_passed` instead). Calling
+`int_conformal_split()` on a classification workflow will error.
+
+For classification conformal prediction sets, we implement the procedure
+ourselves, as in Part 4. This is not a limitation — it’s actually the
+right framing. Classification conformal prediction produces sets, not
+numeric intervals, and the from-scratch implementation makes the logic
+fully transparent.
+
+What `probably` does provide that is useful for classification is
+probability calibration tools: functions that correct miscalibrated
+class probabilities using isotonic regression or Platt scaling. These
+address a related but different question — not “what is the coverage
+guarantee?” but “are the model’s raw probabilities well-calibrated?” We
+use conformal prediction sets as our primary uncertainty output, so we
+don’t need this here, but it’s worth knowing it exists.
+
+``` r
+# For reference: probably's cal_estimate_logistic() can calibrate raw XGBoost
+# probabilities using a logistic regression on the calibration set. This is
+# a different operation from conformal prediction — it adjusts the probabilities
+# themselves rather than wrapping them in a coverage-guaranteed set.
+
+# cal_obj <- cal_estimate_logistic(cal_preds, truth = result)
+# cal_apply(test_preds, cal_obj)  # returns recalibrated .pred_passed
+```
+
+------------------------------------------------------------------------
+
+# Part 6: Individual-Level Uncertainty
+
+This is the core payoff. Conformal prediction doesn’t just give us
+aggregate statistics — it tells us something meaningful about each
+student individually: is this prediction confident, or is the model
+genuinely uncertain about this person?
+
+## Who Gets a Confident Prediction, and Who Doesn’t?
+
+``` r
+individual_uncertainty <- conformal_sets %>%
+  mutate(
+    set_size    = include_passed + include_not_passed,
+    uncertainty = case_when(
+      set_size == 2 ~ "Uncertain (both classes)",
+      set_size == 0 ~ "Anomaly (empty set)",
+      TRUE          ~ "Confident (singleton)"
+    ),
+    margin = abs(.pred_passed - .pred_not_passed)
+  )
+
+individual_uncertainty %>%
+  count(uncertainty, result) %>%
+  mutate(pct = n / sum(n), .by = result) %>%
+  ggplot(aes(x = result, y = pct, fill = uncertainty)) +
+  geom_col(position = "dodge", alpha = 0.85) +
+  scale_fill_manual(
+    values = c(
+      "Confident (singleton)"      = "steelblue",
+      "Uncertain (both classes)"   = "firebrick",
+      "Anomaly (empty set)"        = "grey50"
+    )
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title    = "Prediction confidence by true outcome",
+    subtitle = paste0("90% conformal coverage  |  q\u0302 = ", round(q_hat, 3)),
+    x        = "True outcome",
+    y        = "Proportion of students",
+    fill     = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+![](20-conformal-predict_files/figure-gfm/individual_uncertainty-1.png)<!-- -->
+
+## Confidence as a Function of Model Probability
+
+Prediction set type is directly determined by where the model’s
+probabilities fall relative to $\hat{q}$. Students with high predicted
+probabilities for one class get singleton sets; students near the 50/50
+boundary get both-class sets.
+
+``` r
+ggplot(individual_uncertainty, aes(x = margin, fill = uncertainty)) +
+  geom_histogram(bins = 40, color = "white", alpha = 0.85) +
+  scale_fill_manual(
+    values = c(
+      "Confident (singleton)"    = "steelblue",
+      "Uncertain (both classes)" = "firebrick",
+      "Anomaly (empty set)"      = "grey50"
+    )
+  ) +
+  labs(
+    title    = "Prediction margin by conformal set type",
+    subtitle = "Students near the decision boundary (small margin) correctly flagged as uncertain",
+    x        = "| P(passed) \u2212 P(not passed) |",
+    y        = "Count",
+    fill     = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+![](20-conformal-predict_files/figure-gfm/margin_vs_set_type-1.png)<!-- -->
+
+## Student-Level Inspection: Calibrated Predictions
+
+One of the most useful diagnostics is to sort individual test students
+by their predicted probability and overlay which ones get confident
+vs. uncertain prediction sets. This shows exactly where the model knows
+what it’s doing and where it doesn’t.
+
+``` r
+individual_uncertainty %>%
+  arrange(.pred_passed) %>%
+  mutate(rank = row_number()) %>%
+  ggplot(aes(x = rank, y = .pred_passed)) +
+  geom_point(aes(color = uncertainty), alpha = 0.6, size = 0.7) +
+  geom_point(
+    data = ~ filter(.x, result == "passed"),
+    aes(y = 1.05), shape = "|", color = "black", size = 1.5, alpha = 0.3
+  ) +
+  geom_hline(
+    yintercept = c(1 - q_hat, q_hat),
+    linetype = "dashed", color = "grey40", linewidth = 0.7
+  ) +
+  scale_color_manual(
+    values = c(
+      "Confident (singleton)"    = "steelblue",
+      "Uncertain (both classes)" = "firebrick",
+      "Anomaly (empty set)"      = "grey50"
+    )
+  ) +
+  annotate("text", x = 5, y = 1 - q_hat + 0.03, label = "Upper conf. boundary",
+           color = "grey40", size = 3, hjust = 0) +
+  annotate("text", x = 5, y = q_hat - 0.03,     label = "Lower conf. boundary",
+           color = "grey40", size = 3, hjust = 0) +
+  labs(
+    title    = "Predicted probability with individual-level conformal uncertainty",
+    subtitle = "Students between the dashed lines receive both-class (uncertain) prediction sets | ticks = true passers",
+    x        = "Students ranked by predicted P(passed)",
+    y        = "Predicted P(passed)",
+    color    = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+![](20-conformal-predict_files/figure-gfm/student_level_plot-1.png)<!-- -->
+
+The dashed lines mark the boundaries of the uncertain zone. Students
+between them — where the model cannot distinguish their outcome with
+sufficient confidence at the target coverage level — receive the honest
+`{passed, not_passed}` prediction set. Students outside the zone receive
+a confident singleton. The width of the uncertain zone is controlled by
+$\alpha$: tighten it (higher coverage) and the zone widens; loosen it
+and the zone narrows but the guarantee weakens.
+
+------------------------------------------------------------------------
+
+# Part 7: The Coverage–Efficiency Tradeoff
+
+The choice of $\alpha$ trades off two competing goods: coverage (how
+reliably we contain the true outcome) and efficiency (how often we give
+a confident, actionable singleton prediction). There is no free lunch —
+you cannot get both at once.
+
+``` r
+alpha_grid <- tibble(alpha = seq(0.05, 0.45, by = 0.05)) %>%
+  mutate(
+    q_val = map_dbl(alpha, function(a) {
+      ql <- min(ceiling((n + 1) * (1 - a)) / n, 1)
+      quantile(cal_scores$score, probs = ql)
+    }),
+    test_results = map(q_val, function(q) {
+      test_preds %>%
+        mutate(
+          include_passed     = (1 - .pred_passed)     <= q,
+          include_not_passed = (1 - .pred_not_passed) <= q,
+          covered = case_when(
+            result == "passed"     & include_passed     ~ TRUE,
+            result == "not_passed" & include_not_passed ~ TRUE,
+            TRUE                                        ~ FALSE
+          ),
+          set_size = include_passed + include_not_passed
+        ) %>%
+        summarise(
+          empirical_coverage = mean(covered),
+          pct_singleton      = mean(set_size == 1),
+          pct_both           = mean(set_size == 2),
+          pct_empty          = mean(set_size == 0)
+        )
+    })
+  ) %>%
+  unnest(test_results)
+
+alpha_grid %>%
+  mutate(target_coverage = 1 - alpha) %>%
+  pivot_longer(
+    c(empirical_coverage, pct_singleton, pct_both),
+    names_to  = "metric",
+    values_to = "value"
+  ) %>%
+  ggplot(aes(x = target_coverage, y = value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(
+    values = c(
+      "empirical_coverage" = "steelblue",
+      "pct_singleton"      = "forestgreen",
+      "pct_both"           = "firebrick"
+    ),
+    labels = c("Empirical coverage", "% singleton sets", "% both-class sets")
+  ) +
+  labs(
+    title    = "Coverage\u2013efficiency tradeoff across \u03b1 levels",
+    subtitle = "Higher required coverage forces more uncertain (both-class) prediction sets",
+    x        = "Target coverage (1 \u2212 \u03b1)",
+    y        = "Proportion",
+    color    = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+![](20-conformal-predict_files/figure-gfm/coverage_tradeoff-1.png)<!-- -->
+
+Reading the plot: at 90% target coverage the model gives a confident
+singleton to roughly two-thirds of students. Raising coverage to 95%
+pushes more students into the uncertain zone. The empirical coverage
+line tracks the target closely, confirming the guarantee holds.
+
+------------------------------------------------------------------------
+
+# Part 8: Cross-Conformal Prediction
+
+Split conformal uses a separate calibration set that is not available
+for training. If training data is limited, this cost may matter.
+Cross-conformal prediction (CV+) addresses this by using $k$-fold
+cross-validation: each fold serves as the calibration set for a model
+trained on the remaining folds. The scores from all folds are pooled.
+
+The coverage guarantee remains valid. The cost is that $k$ models must
+be fitted.
+
+`probably` implements this via `int_conformal_cv()`, which requires a
+`fit_resamples` result with predictions saved:
+
+``` r
+fit_conformal_cv <- TRUE
+
+if (fit_conformal_cv) {
+  cv_folds <- vfold_cv(ou_train, v = 10)
+
+  # For each fold: fit the finalized workflow on the training rows,
+  # predict on the held-out rows, compute nonconformity scores.
+  # map_dfr pools all fold scores into a single tibble.
+  cv_scores <- map_dfr(cv_folds$splits, function(split) {
+    fold_train <- training(split)
+    fold_cal   <- testing(split)
+
+    fold_fit <- fit(final_xgb, fold_train)
+
+    augment(fold_fit, fold_cal) %>%
+      mutate(
+        true_class_prob = if_else(result == "passed", .pred_passed, .pred_not_passed),
+        score           = 1 - true_class_prob
+      ) %>%
+      select(result, score)
+  })
+
+  # Pooled quantile threshold across all fold calibration scores
+  n_cv       <- nrow(cv_scores)
+  q_level_cv <- min(ceiling((n_cv + 1) * (1 - alpha)) / n_cv, 1)
+  q_hat_cv   <- quantile(cv_scores$score, probs = q_level_cv)
+
+  cat("CV calibration scores:", n_cv, "\n")
+  cat("CV score threshold:   ", round(q_hat_cv, 4), "\n")
+
+  # Apply to test data using the model fit on all of ou_train (xgb_fit)
+  cv_conformal_sets <- test_preds %>%
+    mutate(
+      include_passed     = (1 - .pred_passed)     <= q_hat_cv,
+      include_not_passed = (1 - .pred_not_passed) <= q_hat_cv,
+      covered = case_when(
+        result == "passed"     & include_passed     ~ TRUE,
+        result == "not_passed" & include_not_passed ~ TRUE,
+        TRUE                                        ~ FALSE
+      )
+    )
+
+  cv_conformal_sets %>%
+    summarise(
+      empirical_coverage = mean(covered),
+      target_coverage    = 1 - alpha,
+      n_test             = n()
+    ) %>%
+    print()
+}
+```
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Passed invalid argument 'info' - entries on
+    ## it should be passed as direct arguments."): Passed invalid argument 'info' -
+    ## entries on it should be passed as direct arguments. This warning will become an
+    ## error in a future version.
+
+    ## Warning in check.deprecation(deprecated_train_params, match.call(), ...):
+    ## Passed invalid function arguments: nthread. These should be passed as a list to
+    ## argument 'params'. Conversion from argument to 'params' entry will be done
+    ## automatically, but this behavior will become an error in a future version.
+
+    ## Warning in throw_err_or_depr_msg("Parameter '", match_old, "' has been renamed
+    ## to '", : Parameter 'watchlist' has been renamed to 'evals'. This warning will
+    ## become an error in a future version.
+
+    ## Warning in check.custom.obj(params, objective): Argument 'objective' is only
+    ## for custom objectives. For built-in objectives, pass the objective under
+    ## 'params'. This warning will become an error in a future version.
+
+    ## CV calibration scores: 14666 
+    ## CV score threshold:    0.5855 
+    ## # A tibble: 1 × 3
+    ##   empirical_coverage target_coverage n_test
+    ##                <dbl>           <dbl>  <int>
+    ## 1              0.901             0.9  13038
+
+``` r
+cv_conformal_sets%>%
+  select(result,.pred_class,.pred_passed,.pred_not_passed,include_passed,include_not_passed,covered)%>%
+  group_by(result,covered)%>%
+  count()
+```
+
+    ## # A tibble: 4 × 3
+    ## # Groups:   result, covered [4]
+    ##   result     covered     n
+    ##   <fct>      <lgl>   <int>
+    ## 1 passed     FALSE     428
+    ## 2 passed     TRUE     5742
+    ## 3 not_passed FALSE     858
+    ## 4 not_passed TRUE     6010
+
+``` r
+# Add derived columns used by both table and plot
+cv_summary <- cv_conformal_sets %>%
+  mutate(
+    true_class_prob = if_else(result == "passed", .pred_passed, .pred_not_passed),
+    set_size = include_passed + include_not_passed,
+    set_type = case_when(
+      set_size == 2 ~ "Uncertain (both)",
+      set_size == 0 ~ "Anomaly (empty)",
+      TRUE          ~ "Confident (singleton)"
+    )
+  )
+```
+
+``` r
+cv_summary %>%
+  group_by(result, set_type) %>%
+  summarise(
+    n              = n(),
+    pct            = n / nrow(cv_summary),
+    mean_true_prob = mean(true_class_prob),
+    pct_covered    = mean(covered),
+    .groups        = "drop"
+  ) %>%
+  arrange(result, set_type) %>%
+  mutate(across(c(pct, mean_true_prob, pct_covered), ~ round(.x, 3)))
+```
+
+    ## # A tibble: 4 × 6
+    ##   result     set_type                  n   pct mean_true_prob pct_covered
+    ##   <fct>      <chr>                 <int> <dbl>          <dbl>       <dbl>
+    ## 1 passed     Confident (singleton)  5795 0.444          0.813       0.926
+    ## 2 passed     Uncertain (both)        375 0.029          0.507       1    
+    ## 3 not_passed Confident (singleton)  6524 0.5            0.84        0.868
+    ## 4 not_passed Uncertain (both)        344 0.026          0.5         1
+
+``` r
+ggplot(cv_summary, aes(x = true_class_prob, fill = set_type)) +
+  geom_histogram(bins = 40, color = "white", alpha = 0.85) +
+  facet_wrap(~ result, scales = "free_y", labeller = label_both) +
+  scale_fill_manual(
+    values = c(
+      "Confident (singleton)" = "steelblue",
+      "Uncertain (both)"      = "firebrick",
+      "Anomaly (empty)"       = "grey50"
+    )
+  ) +
+  geom_vline(xintercept = 1 - q_hat_cv, linetype = "dashed",
+             color = "grey30", linewidth = 0.8) +
+  labs(
+    title    = "Distribution of true-class predicted probability by set type",
+    subtitle = paste0("CV+ threshold q\u0302 = ", round(q_hat_cv, 3),
+                      "  |  ", (1 - alpha) * 100, "% target coverage"),
+    x        = "Predicted probability of true class",
+    y        = "Count",
+    fill     = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+![](20-conformal-predict_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+The key difference is practical rather than statistical: CV+ uses all of
+the training data for fitting (pooled across folds) and is preferable
+when $n$ is small. With large datasets like OULAD, split conformal is
+usually sufficient and much faster.
+
+------------------------------------------------------------------------
+
+# Part 9: Practical Takeaways
+
+## When Is Conformal Prediction Most Valuable?
+
+The most important insight is that conformal prediction converts a
+poorly-calibrated probability into an actionable, auditable uncertainty
+statement. Its value is highest when:
+
+- **High stakes decisions depend on individual predictions.** An
+  aggregate AUC tells you about the model overall; a prediction set
+  tells you about this student.
+- **The model may be miscalibrated.** XGBoost probabilities are often
+  not well-calibrated without post-hoc adjustment. Conformal sets are
+  calibrated by construction.
+- **You need a formal guarantee to a stakeholder.** “At least 90% of
+  these prediction sets contain the true outcome” is a statement you can
+  defend. “The model’s AUC is 0.85” is harder to translate to individual
+  reliability.
+
+## Limitations to Keep in Mind
+
+**Exchangeability.** The guarantee requires calibration and test data to
+come from the same distribution. If the student population shifts — a
+new semester, a different delivery platform — the guarantee may not
+hold. This is the same as standard distribution shift, but conformal
+prediction makes the assumption explicit.
+
+**Efficiency, not accuracy.** A model that assigns 0.5 probability to
+everyone will still have valid 90% coverage — the prediction sets will
+just always include both classes. Conformal prediction tells you the
+model is being honest about its uncertainty, but it doesn’t fix a bad
+model.
+
+**The calibration set size matters.** With $n = 200$ calibration
+observations, the finite-sample correction $\frac{n+1}{n}$ is 0.5%. With
+$n = 50$, the quantile estimate becomes noisy. Larger calibration sets
+give tighter, more reliable thresholds.
+
+------------------------------------------------------------------------
+
+# Summary
+
+| Property | Conformal Prediction | Standard Model Intervals |
+|----|----|----|
+| Coverage guarantee | Exact (finite-sample) | Asymptotic / model-dependent |
+| Distributional assumptions | Exchangeability only | Usually parametric |
+| Works for any model | Yes | No |
+| Output for classification | Prediction *sets* | Single probability |
+| Calibration data needed | Yes | No |
+| Computationally cheap | Yes (split) / Moderate (CV+) | Yes |
+
+The procedure in three lines: compute a nonconformity score for each
+calibration observation, find the empirical quantile at the target
+level, include any class whose score on the test observation falls at or
+below that threshold. What comes out is a prediction set for each
+student with a guaranteed coverage rate — an honest, auditable,
+individual-level uncertainty statement that requires no parametric
+assumptions about the model or the data.

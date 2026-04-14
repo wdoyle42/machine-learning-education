@@ -675,7 +675,7 @@ tibble(
 ## Summary
 
 | Technique | Mechanism | Key hyperparameter | Effect on weights |
-|------------------|------------------|------------------|------------------|
+|----|----|----|----|
 | **No regularization** | — | — | Can grow large; prone to co-adaptation |
 | **Dropout** | Random unit silencing during training | Dropout rate $p \in [0, 1)$ | Moderate magnitude; distributed representations |
 | **L2 weight decay** | Penalty on $\sum w^2$ added to loss | Penalty $\lambda \geq 0$ | Shrinks toward zero; narrow distribution |
