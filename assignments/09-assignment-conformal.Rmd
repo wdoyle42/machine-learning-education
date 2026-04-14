@@ -5,11 +5,11 @@ output: github_document
 
 # Overview
 
-In this assignment you will apply **conformal prediction** to the elastic net model from the regularization lectures. Where the lecture used XGBoost on a binary outcome, here you will use the elastic net predicting high school GPA (`x3tgpatot`) from the HSLS dataset — a continuous regression outcome.
+In this assignment you will apply conformal prediction to the elastic net model from the regularization lectures. Where the lecture used XGBoost on a binary outcome, here you will use the elastic net predicting high school GPA (`x3tgpatot`) from the HSLS dataset — a continuous regression outcome.
 
 Conformal prediction gives you a rigorous, distribution-free coverage guarantee: the true outcome will fall inside your prediction interval at least $(1 - \alpha)$% of the time on new data, regardless of the model's internal assumptions.
 
-You have two paths for this assignment. You may implement conformal prediction **from scratch** (Steps 1–4 below) or use the **`probably` package** (Step 5). Either path earns full credit. Doing both earns extra credit.
+You have two paths for this assignment. You may implement conformal prediction from scratch (Steps 1–4 below) or use the `probably` package (Step 5). Either path earns full credit. Everyone needs to complete step 6. 
 
 ---
 
@@ -173,39 +173,14 @@ test_conformal %>% head(10)
 
 Join the interval predictions back to the test set, compute empirical coverage, and compare it to the target.
 
-### 5.4 Compare to your from-scratch result
-
-In 2–3 sentences: do the `probably` intervals match your from-scratch intervals? Should they? If there are differences, what might explain them?
-
 ---
 
 ## Step 6: Conceptual Questions
 
 Answer each question in 3–5 sentences.
 
-**6.1** Conformal prediction requires **exchangeability**. What does this assumption mean in plain terms? Give one concrete example where it would hold and one where it might be violated in an educational dataset.
+**6.1** Conformal prediction requires exchangeability. What does this assumption mean in plain terms? Give one concrete example where it would hold and one where it might be violated in an educational dataset.
 
-**6.2** The conformal prediction intervals you constructed are **symmetric** — the same $\hat{q}$ is added and subtracted from each point prediction. What is a limitation of symmetric intervals for predicting GPA, given the bounded nature of the outcome? How might you address this?
+**6.2** The conformal prediction intervals you constructed are symmetric — the same $\hat{q}$ is added and subtracted from each point prediction. What is a limitation of symmetric intervals for predicting GPA, given the bounded nature of the outcome? How might you address this?
 
 **6.3** Suppose a colleague argues: "We already have standard errors from the elastic net — why bother with conformal prediction?" Write a response explaining what the conformal guarantee offers that standard errors from a regularized model do not.
-
-**6.4** In the from-scratch implementation, the calibration set is used *only* to compute $\hat{q}$ — the model never sees it during training. Why is this separation essential for the coverage guarantee to be valid?
-
----
-
-## Grading Checklist
-
-| Component | Points |
-|---|---|
-| Data split (train / calibration / test) correctly constructed | 10 |
-| Elastic net tuned and finalized correctly | 15 |
-| Calibration scores computed and visualized | 15 |
-| $\hat{q}$ computed with finite-sample correction; plain-English interpretation | 10 |
-| Prediction intervals constructed on test set | 10 |
-| Empirical coverage verified and reported | 10 |
-| Coverage–width tradeoff table or plot | 10 |
-| `probably` implementation (if attempted) | 10 |
-| Conceptual questions (6.1–6.4) | 20 |
-| **Total** | **110** |
-
-Extra credit (up to 10 points): Complete both the from-scratch and `probably` paths and write a comparison of the two approaches.
