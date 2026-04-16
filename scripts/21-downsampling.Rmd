@@ -1,0 +1,462 @@
+---
+title: "Lecture 21: Downsampling for Rare Outcomes"
+author: "Will Doyle"
+date: "2026-04-16"
+output: github_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(themis)
+library(patchwork)
+```
+
+
+
+# The Problem: When Accuracy Is Free
+
+Most classifiers are implicitly optimized for accuracy. When one class is rare,
+a model can achieve high accuracy by ignoring it entirely — predicting the
+majority class for every observation. This is the null classifier (AKA Doyle Consulting), and it
+sets a baseline that any useful model must beat.
+
+Consider predicting whether a student finishes high school in the top quartile
+of GPA. About 25% of students fall there by construction. A model that predicts
+"not top quartile" for everyone is correct 75% of the time without learning
+anything. Accuracy alone will not tell us whether our model is doing useful work.
+
+**Downsampling**, **upsampling**, and **SMOTE** are three strategies for
+rebalancing the training data so the model is forced to take the minority class
+seriously. Each works differently and makes different assumptions.
+
+The key constraint shared by all three: we only modify the **training** data.
+The test set always reflects the true class distribution — otherwise our
+evaluation metrics would be meaningless. The idea is to train the model one way,
+but to test it on the held out full testing dataset.
+
+
+# Data Setup
+
+```{r load_data}
+hs <- read_csv("hsls_extract.csv") %>%
+  clean_names() %>%
+  mutate(across(where(is.numeric), ~ replace(.x, .x %in% -9:-1, NA))) %>%
+  drop_na()
+```
+
+## Create the Outcome
+
+We'll define the top quartile of `x3tgpatot` as our positive class. Unlike the
+top-decile example you may have seen before, the top quartile gives us a 25%
+positive rate — rare enough to cause the null-classifier problem, but not so
+extreme that the minority class is vanishingly small.
+
+```{r create_outcome}
+gpa_cutoff <- quantile(hs$x3tgpatot, 0.75)
+
+hs <- hs %>%
+  mutate(
+    top_quartile = as_factor(if_else(x3tgpatot >= gpa_cutoff, "top_quartile", "other")),
+    top_quartile = fct_relevel(top_quartile, "top_quartile")  # positive class first
+  ) %>%
+  select(-x3tgpatot)
+
+hs %>%
+  count(top_quartile) %>%
+  mutate(proportion = n / sum(n))
+```
+
+The null classifier — predict "other" for everyone — would achieve ~75%
+accuracy. Accuracy is therefore a misleading metric here. We'll use ROC AUC as
+our primary tuning criterion, and report sensitivity and specificity alongside
+it to understand the tradeoff the model is making.
+
+---
+
+# Train / Test Split
+
+Stratify on the outcome to preserve the 75/25 class ratio in both splits.
+
+```{r split}
+
+hs_split <- initial_split(hs, prop = 0.75, strata = top_quartile)
+hs_train <- training(hs_split)
+hs_test  <- testing(hs_split)
+
+hs_train %>%
+  count(top_quartile) %>%
+  mutate(proportion = n / sum(n))
+```
+
+---
+
+# Four Recipes: Standard, Downsampled, Upsampled, and SMOTE
+
+All four recipes share the same preprocessing steps. The only difference is
+the resampling step added at the end of each.
+
+**Downsampling** discards majority-class rows until both classes are equal.
+No new information is created — you're just throwing away "other" students.
+
+**Upsampling** duplicates minority-class rows until both classes are equal.
+No majority-class data is lost, but the top-quartile students the model
+sees are not new — they're exact copies of existing observations.
+
+**SMOTE** (Synthetic Minority Oversampling TEchnique) creates *new* synthetic
+minority-class observations by interpolating between existing ones. For each
+top-quartile student, SMOTE finds its nearest neighbors in feature space among
+other top-quartile students, then generates a new synthetic student at a random
+point along the line connecting them. The result is a more varied minority-class
+training set, at the cost of introducing observations that don't correspond to
+any real student.
+
+All three steps run **inside the resampling loop** during tuning — they only
+touch the training fold of each resample. Validation folds and the final test
+set always see the natural class distribution.
+
+```{r recipes}
+base_formula <- as.formula("top_quartile ~ .")
+
+# Recipe WITHOUT any resampling
+rec_standard <- recipe(base_formula, data = hs_train) %>%
+  step_other(all_nominal_predictors(), threshold = 0.01) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors())
+
+# Downsample: reduce majority class to match minority
+rec_downsample <- rec_standard %>%
+  step_downsample(top_quartile, under_ratio = 1, seed = 2026)
+
+# Upsample: replicate minority class to match majority
+rec_upsample <- rec_standard %>%
+  step_upsample(top_quartile, over_ratio = 1, seed = 2026)
+
+# SMOTE: synthesize new minority-class observations by interpolation
+rec_smote <- rec_standard %>%
+  step_smote(top_quartile, over_ratio = 1, seed = 2026)
+```
+
+`under_ratio = 1` for downsampling means reduce the majority class until both
+classes are equal. `over_ratio = 1` for upsampling and SMOTE means increase the
+minority class until both classes are equal.
+
+---
+
+# Model Specification
+
+Logistic elastic net with both `penalty` and `mixture` tuned. This is the same
+specification used in earlier classification lectures.
+
+```{r model_spec}
+enet_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
+  set_engine("glmnet") %>%
+  set_mode("classification")
+```
+
+# Workflows
+
+```{r workflows}
+wf_standard <- workflow() %>%
+  add_recipe(rec_standard) %>%
+  add_model(enet_spec)
+
+wf_downsample <- workflow() %>%
+  add_recipe(rec_downsample) %>%
+  add_model(enet_spec)
+
+wf_upsample <- workflow() %>%
+  add_recipe(rec_upsample) %>%
+  add_model(enet_spec)
+
+wf_smote <- workflow() %>%
+  add_recipe(rec_smote) %>%
+  add_model(enet_spec)
+```
+
+---
+
+# Resampling and Tuning
+
+Monte Carlo CV with 25 resamples, stratified on the outcome. Latin hypercube
+grid with 25 candidates — enough to map the penalty/mixture surface without
+exhaustive search. All four workflows use the same folds and the same grid so
+comparisons are fair.
+
+```{r resamples}
+set.seed(2026)
+
+hs_folds <- mc_cv(hs_train, times = 25, prop = 0.75, strata = top_quartile)
+
+enet_grid <- grid_space_filling(
+  extract_parameter_set_dials(enet_spec),
+  size = 25
+)
+```
+
+```{r tune}
+fit_model <- TRUE
+
+if (fit_model) {
+  tune_standard <- wf_standard %>%
+    tune_grid(
+      hs_folds,
+      grid    = enet_grid,
+      metrics = metric_set(roc_auc, sensitivity, specificity)
+    )
+
+  tune_downsample <- wf_downsample %>%
+    tune_grid(
+      hs_folds,
+      grid    = enet_grid,
+      metrics = metric_set(roc_auc, sensitivity, specificity)
+    )
+
+  tune_upsample <- wf_upsample %>%
+    tune_grid(
+      hs_folds,
+      grid    = enet_grid,
+      metrics = metric_set(roc_auc, sensitivity, specificity)
+    )
+
+  tune_smote <- wf_smote %>%
+    tune_grid(
+      hs_folds,
+      grid    = enet_grid,
+      metrics = metric_set(roc_auc, sensitivity, specificity)
+    )
+
+  save(tune_standard, tune_downsample, tune_upsample, tune_smote,
+       file = here::here("scripts", "downsample_tune.Rdata"))
+} else {
+  load(here::here("scripts", "downsample_tune.Rdata"))
+}
+```
+
+---
+
+# Tuning Results
+
+```{r compare_tuning}
+bind_rows(
+  tune_standard   %>% collect_metrics() %>% mutate(model = "Standard"),
+  tune_downsample %>% collect_metrics() %>% mutate(model = "Downsampled"),
+  tune_upsample   %>% collect_metrics() %>% mutate(model = "Upsampled"),
+  tune_smote      %>% collect_metrics() %>% mutate(model = "SMOTE")
+) %>%
+  group_by(model, .metric) %>%
+  slice_max(mean, n = 1) %>%
+  select(model, .metric, mean, std_err) %>%
+  arrange(.metric, model)
+```
+
+```{r plot_tuning}
+bind_rows(
+  tune_standard   %>% collect_metrics() %>% mutate(model = "Standard"),
+  tune_downsample %>% collect_metrics() %>% mutate(model = "Downsampled"),
+  tune_upsample   %>% collect_metrics() %>% mutate(model = "Upsampled"),
+  tune_smote      %>% collect_metrics() %>% mutate(model = "SMOTE")
+) %>%
+  filter(.metric == "roc_auc") %>%
+  ggplot(aes(x = penalty, y = mean, color = model)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(se = FALSE) +
+  scale_x_log10() +
+  scale_color_manual(values = c(
+    "Standard"    = "steelblue",
+    "Downsampled" = "firebrick",
+    "Upsampled"   = "forestgreen",
+    "SMOTE"       = "darkorchid"
+  )) +
+  labs(
+    title    = "Cross-validated ROC AUC across penalty values",
+    subtitle = "All four training strategies on the same folds and grid",
+    x        = "Penalty (log scale)",
+    y        = "ROC AUC",
+    color    = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Final Fit and Test-Set Evaluation
+
+```{r finalize}
+best_standard   <- select_best(tune_standard,   metric = "roc_auc")
+best_downsample <- select_best(tune_downsample, metric = "roc_auc")
+best_upsample   <- select_best(tune_upsample,   metric = "roc_auc")
+best_smote      <- select_best(tune_smote,      metric = "roc_auc")
+
+final_standard <- wf_standard %>%
+  finalize_workflow(best_standard) %>%
+  last_fit(hs_split, metrics = metric_set(roc_auc, sensitivity, specificity, accuracy))
+
+final_downsample <- wf_downsample %>%
+  finalize_workflow(best_downsample) %>%
+  last_fit(hs_split, metrics = metric_set(roc_auc, sensitivity, specificity, accuracy))
+
+final_upsample <- wf_upsample %>%
+  finalize_workflow(best_upsample) %>%
+  last_fit(hs_split, metrics = metric_set(roc_auc, sensitivity, specificity, accuracy))
+
+final_smote <- wf_smote %>%
+  finalize_workflow(best_smote) %>%
+  last_fit(hs_split, metrics = metric_set(roc_auc, sensitivity, specificity, accuracy))
+```
+
+```{r test_metrics}
+bind_rows(
+  collect_metrics(final_standard)   %>% mutate(model = "Standard"),
+  collect_metrics(final_downsample) %>% mutate(model = "Downsampled"),
+  collect_metrics(final_upsample)   %>% mutate(model = "Upsampled"),
+  collect_metrics(final_smote)      %>% mutate(model = "SMOTE")
+) %>%
+  select(model, .metric, .estimate) %>%
+  pivot_wider(names_from = model, values_from = .estimate) %>%
+  rename(metric = .metric) %>%
+  arrange(metric)
+```
+
+Reading across the rows:
+
+- **ROC AUC** tends to be similar across all four strategies — resampling
+  primarily shifts the operating point on the ROC curve, it doesn't reshape it.
+- **Sensitivity** rises substantially for all three resampling strategies
+  relative to the standard model. The model is now catching more true
+  top-quartile students.
+- **Specificity** falls correspondingly — the price of higher sensitivity is
+  more false positives among the "other" students.
+- **Accuracy** drops for the resampled models, because more observations are
+  being sent across the 0.5 threshold into the positive class.
+
+Downsampling, upsampling, and SMOTE tend to produce similar sensitivity/
+specificity profiles. The differences between them are usually smaller than the
+difference between any of them and the standard model.
+
+---
+
+# ROC Curves
+
+```{r roc_curves}
+bind_rows(
+  final_standard   %>% collect_predictions() %>%
+    roc_curve(truth = top_quartile, .pred_top_quartile) %>% mutate(model = "Standard"),
+  final_downsample %>% collect_predictions() %>%
+    roc_curve(truth = top_quartile, .pred_top_quartile) %>% mutate(model = "Downsampled"),
+  final_upsample   %>% collect_predictions() %>%
+    roc_curve(truth = top_quartile, .pred_top_quartile) %>% mutate(model = "Upsampled"),
+  final_smote      %>% collect_predictions() %>%
+    roc_curve(truth = top_quartile, .pred_top_quartile) %>% mutate(model = "SMOTE")
+) %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = model)) +
+  geom_line(linewidth = 1) +
+  geom_abline(linetype = "dashed", color = "grey50") +
+  scale_color_manual(values = c(
+    "Standard"    = "steelblue",
+    "Downsampled" = "firebrick",
+    "Upsampled"   = "forestgreen",
+    "SMOTE"       = "darkorchid"
+  )) +
+  labs(
+    title    = "ROC curves on held-out test set",
+    subtitle = "Standard vs. three resampling strategies  |  outcome: top quartile of HS GPA",
+    x        = "1 \u2212 Specificity (False Positive Rate)",
+    y        = "Sensitivity (True Positive Rate)",
+    color    = NULL
+  ) +
+  coord_equal() +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+If the four curves overlap closely, it confirms that resampling strategy is
+primarily a threshold-shifting intervention. The overall discrimination ability
+of the model — encoded in the shape of the curve — depends much more on the
+features and the model family than on which resampling strategy we used.
+
+---
+
+# Predicted Probability Distributions
+
+Comparing the predicted probability distributions shows the mechanical effect
+of each strategy most clearly.
+
+```{r pred_prob_dist}
+bind_rows(
+  final_standard   %>% collect_predictions() %>% mutate(model = "Standard"),
+  final_downsample %>% collect_predictions() %>% mutate(model = "Downsampled"),
+  final_upsample   %>% collect_predictions() %>% mutate(model = "Upsampled"),
+  final_smote      %>% collect_predictions() %>% mutate(model = "SMOTE")
+) %>%
+  ggplot(aes(x = .pred_top_quartile, fill = top_quartile)) +
+  geom_histogram(bins = 40, alpha = 0.7, color = "white", position = "identity") +
+  facet_wrap(~ model, ncol = 2) +
+  scale_fill_manual(values = c("steelblue", "firebrick")) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "grey40") +
+  labs(
+    title    = "Predicted probability distributions on the test set",
+    subtitle = "All three resampling strategies shift probabilities rightward relative to standard",
+    x        = "Predicted P(top quartile)",
+    y        = "Count",
+    fill     = "True outcome"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+The standard model compresses predicted probabilities toward zero — it has
+learned that low predictions are usually safe. All three resampling strategies
+spread the distribution further across the full range. The dashed line at 0.5
+marks the default classification threshold. Notice how many more observations
+cross it under the resampled models.
+
+The differences *among* the three resampled distributions are usually subtle.
+Upsampling and downsampling tend to produce nearly identical predicted
+probability distributions because both achieve the same 50/50 class balance
+in training — they just get there differently. SMOTE may produce a slightly
+smoother distribution because synthetic interpolated observations fill gaps in
+the minority class's feature space that exact duplicates would not.
+
+---
+
+# Key Takeaways
+
+**All three strategies address the same problem differently.**
+Downsampling discards majority-class rows. Upsampling duplicates minority-class
+rows verbatim. SMOTE creates synthetic minority-class rows by interpolating
+between existing ones. All three achieve the same goal — a more balanced
+training signal — but make different tradeoffs around information loss and
+data fabrication.
+
+**Resampling is a threshold-shifting strategy, not a model-improvement strategy.**
+The overall shape of the ROC curve (and therefore AUC) changes little. What
+changes is where the model sits on that curve at the default 0.5 threshold:
+higher sensitivity, lower specificity, lower raw accuracy.
+
+**The test set is always the real-world distribution.** All resampling steps
+run inside the resampling loop via the recipe. The test set used in `last_fit()`
+is never touched. Evaluating on a resampled test set would give misleadingly
+optimistic sensitivity estimates.
+
+**SMOTE's advantage is most visible with small datasets.** Upsampling and
+downsampling both reduce effective training set diversity — upsampling by
+repeating the same minority observations, downsampling by discarding majority
+ones. SMOTE introduces genuine variation in the minority class, which can
+reduce overfitting to specific minority-class examples. With a large dataset
+like HSLS, this advantage is usually small.
+
+**SMOTE assumes linear interpolation is meaningful.** A synthetic student
+halfway between two real students in feature space should be a plausible
+student. This assumption holds reasonably well for continuous predictors but
+can produce implausible combinations with highly categorical data. In education
+datasets with many dummy-coded variables, inspect SMOTE results carefully.
+
+**The right choice depends on dataset size and feature type.** With large data
+and mixed features, downsampling is simple and hard to break. With small data
+and mostly continuous features, SMOTE often edges ahead. Upsampling sits in
+between — it retains all majority-class information but adds no new minority-class
+information. When in doubt, try all three and let the validation metrics decide.
