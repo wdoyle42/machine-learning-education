@@ -128,15 +128,15 @@ rec_standard <- recipe(base_formula, data = hs_train) %>%
 
 # Downsample: reduce majority class to match minority
 rec_downsample <- rec_standard %>%
-  step_downsample(top_quartile, under_ratio = 1, seed = 2026)
+  step_downsample(top_quartile, under_ratio = 1)
 
 # Upsample: replicate minority class to match majority
 rec_upsample <- rec_standard %>%
-  step_upsample(top_quartile, over_ratio = 1, seed = 2026)
+  step_upsample(top_quartile, over_ratio = 1)
 
 # SMOTE: synthesize new minority-class observations by interpolation
 rec_smote <- rec_standard %>%
-  step_smote(top_quartile, over_ratio = 1, seed = 2026)
+  step_smote(top_quartile, over_ratio = 1)
 ```
 
 `under_ratio = 1` for downsampling means reduce the majority class until both
@@ -186,8 +186,6 @@ exhaustive search. All four workflows use the same folds and the same grid so
 comparisons are fair.
 
 ```{r resamples}
-set.seed(2026)
-
 hs_folds <- mc_cv(hs_train, times = 25, prop = 0.75, strata = top_quartile)
 
 enet_grid <- grid_space_filling(
@@ -373,7 +371,7 @@ bind_rows(
   theme(legend.position = "bottom")
 ```
 
-If the four curves overlap closely, it confirms that resampling strategy is
+The four curves overlap closely, confirming that resampling strategy is
 primarily a threshold-shifting intervention. The overall discrimination ability
 of the model — encoded in the shape of the curve — depends much more on the
 features and the model family than on which resampling strategy we used.
