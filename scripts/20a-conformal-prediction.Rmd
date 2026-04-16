@@ -1,0 +1,886 @@
+---
+title: "Lecture 20a: Conformal Prediction Intervals"
+author: "Will Doyle"
+date: "2026-04-16"
+output: github_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(probably)
+library(patchwork)
+
+
+```
+
+---
+
+# Part 1: The Problem with Point Predictions
+
+Every model we've built this semester produces a point estimate: a single number.
+Our elastic net predicted a student's GPA. Our XGBoost predicted a pass probability.
+These are useful — but they're incomplete.
+
+A point prediction answers "what does the model expect?" It doesn't answer "how
+sure should we be?" The conventional response is to report a confidence or
+prediction interval. But those intervals usually rest on parametric assumptions
+— normally distributed errors, constant variance — that may not hold for the
+messy, high-dimensional education data we work with.
+
+**Conformal prediction** is a distribution-free framework for constructing
+prediction intervals with a guaranteed coverage rate. If we say the interval
+has 90% coverage, it really does contain the true value at least 90% of the time
+— regardless of the model we used, and without any assumptions about the
+distribution of errors.
+
+This lecture covers two settings:
+
+1. **Continuous outcomes** — conformal prediction intervals for HS GPA,
+   implemented by hand and then with `probably`.
+2. **Binary outcomes** — conformal prediction sets under three different
+   model behaviors: a good model, an indifferent model, and a wrong model.
+
+---
+
+# Part 2: Conformal Intervals for a Continuous Outcome
+
+## The Intuition
+
+Conformal prediction uses a held-out calibration set — data the fitted
+model has never seen — to characterize how large the model's errors tend to be.
+The key quantity is the non-conformity score: for regression, this is just
+the absolute residual.
+
+$$s_i = |y_i - \hat{y}_i|$$
+If you're thinking that looks like a residual, you're right! The only difference is that it's from a calibration set, not the training data. 
+
+To get a prediction interval with $1 - \alpha$ coverage, we find the
+$(1 - \alpha)$-th quantile of the calibration scores, call it $\hat{q}$. For
+any new observation, the interval is:
+
+$$\hat{y}_{\text{new}} \pm \hat{q}$$
+
+The guarantee: at least $1 - \alpha$ of future test observations will have
+their true value inside this interval, without assuming anything about the
+error distribution.
+
+## Data Setup
+
+We'll use the HSLS dataset and predict cumulative high school GPA (`x3tgpatot`),
+exactly as in the elastic net lecture. The only change is that we need **three**
+data splits instead of two: training, calibration, and test.
+
+```{r load_data}
+hs <- read_csv("hsls_extract.csv") %>%
+  clean_names() %>%
+  mutate(across(where(is.numeric), ~ replace(.x, .x %in% -9:-1, NA))) %>%
+  drop_na()
+```
+
+```{r three_way_split}
+# 60% train, 20% calibration, 20% test
+hs_split  <- initial_split(hs, prop = 0.60)
+hs_train  <- training(hs_split)
+remaining <- testing(hs_split)
+
+cal_split <- initial_split(remaining, prop = 0.50)
+hs_cal    <- training(cal_split)
+hs_test   <- testing(cal_split)
+
+cat("Training n    :", nrow(hs_train), "\n")
+cat("Calibration n :", nrow(hs_cal), "\n")
+cat("Test n        :", nrow(hs_test), "\n")
+```
+
+## Fit the Model
+
+Same elastic net setup as before — we just fit it and move on. The model is
+not the point here; the conformal machinery is.
+
+```{r recipe}
+hs_rec <- recipe(x3tgpatot ~ ., data = hs_train) %>%
+  step_other(all_nominal_predictors(), threshold = 0.01) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors())
+```
+
+```{r model_spec}
+enet_spec <- linear_reg(penalty = 0.01, mixture = 0.5) %>%
+  set_engine("glmnet")
+```
+
+```{r fit_workflow}
+hs_wf <- workflow() %>%
+  add_recipe(hs_rec) %>%
+  add_model(enet_spec) %>%
+  fit(data = hs_train)
+```
+
+Face validity check — RMSE on the calibration set should look reasonable:
+
+
+
+## By Hand: Building Conformal Intervals from Scratch
+
+### Step 1: Non-Conformity Scores on the Calibration Set
+
+```{r cal_scores}
+cal_preds <- augment(hs_wf, new_data = hs_cal) %>%
+  mutate(nonconf_score = abs(x3tgpatot - .pred))
+
+cal_preds %>%
+  select(x3tgpatot, .pred, nonconf_score) %>%
+  slice_sample(n = 8)
+```
+
+```{r plot_scores}
+cal_preds %>%
+  ggplot(aes(x = nonconf_score)) +
+  geom_histogram(bins = 40, fill = "steelblue", color = "white", alpha = 0.85) +
+  labs(
+    title    = "Distribution of calibration non-conformity scores",
+    subtitle = "Each score = |observed GPA − predicted GPA|",
+    x        = "Non-conformity score (absolute residual)",
+    y        = "Count"
+  ) +
+  theme_minimal()
+```
+
+### Step 2: The Quantile Threshold
+
+For 90% coverage ($\alpha = 0.10$), we find the empirical quantile of the
+calibration scores. There's a small finite-sample correction: instead of the
+plain 90th percentile we use $\lceil (n+1)(1-\alpha) \rceil / n$. With a large
+calibration set this is negligible, but it ensures the guarantee holds exactly.
+
+```{r quantile_by_hand}
+alpha   <- 0.10
+n_cal   <- nrow(cal_preds)
+q_level <- min(ceiling((n_cal + 1) * (1 - alpha)) / n_cal, 1)
+q_hat   <- quantile(cal_preds$nonconf_score, probs = q_level)
+
+cat("Target coverage    :", 1 - alpha, "\n")
+cat("Quantile level used:", round(q_level, 4), "\n")
+cat("q̂ (interval half-width):", round(q_hat, 3), "\n")
+```
+
+```{r plot_quantile}
+cal_preds %>%
+  ggplot(aes(x = nonconf_score)) +
+  geom_histogram(bins = 40, fill = "steelblue", color = "white", alpha = 0.85) +
+  geom_vline(xintercept = q_hat, color = "firebrick", linewidth = 1.2,
+             linetype = "dashed") +
+  annotate("text", x = q_hat + 0.03, y = Inf, vjust = 2, hjust = 0,
+           label = paste0("q\u0302 = ", round(q_hat, 3)),
+           color = "firebrick", size = 4) +
+  labs(
+    title    = "Non-conformity scores with 90% quantile threshold",
+    subtitle = "The dashed line becomes the interval half-width for new predictions",
+    x        = "Non-conformity score",
+    y        = "Count"
+  ) +
+  theme_minimal()
+```
+
+### Step 3: Apply to the Test Set
+
+```{r test_intervals}
+test_intervals <- augment(hs_wf, new_data = hs_test) %>%
+  mutate(
+    lower   = .pred - q_hat,
+    upper   = .pred + q_hat,
+    covered = x3tgpatot >= lower & x3tgpatot <= upper
+  )
+
+test_intervals %>%
+  summarise(
+    n            = n(),
+    coverage     = mean(covered),
+    target       = 1 - alpha,
+    mean_width   = mean(upper - lower),
+    mean_abs_err = mean(abs(x3tgpatot - .pred))
+  )
+```
+
+Empirical coverage should be at or above 90%. The interval width is constant
+(symmetric around every prediction) — this is a feature of split conformal
+prediction. More sophisticated methods (locally adaptive conformal) can vary
+the width by observation, but split conformal is the right foundation.
+
+```{r plot_test_intervals}
+test_intervals %>%
+  slice_sample(n = 100) %>%
+  arrange(.pred) %>%
+  mutate(rank = row_number()) %>%
+  ggplot(aes(x = rank)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "steelblue", alpha = 0.25) +
+  geom_point(aes(y = x3tgpatot, color = covered), size = 1.5, alpha = 0.8) +
+  geom_line(aes(y = .pred), color = "steelblue", linewidth = 0.8) +
+  scale_color_manual(
+    values = c("TRUE" = "steelblue", "FALSE" = "firebrick"),
+    labels = c("TRUE" = "Covered", "FALSE" = "Not covered")
+  ) +
+  labs(
+    title    = "90% conformal prediction intervals on test set",
+    subtitle = "Students ranked by predicted GPA; band = ± q̂; red points = intervals that missed",
+    x        = "Rank (sorted by predicted GPA)",
+    y        = "HS GPA (x3tgpatot)",
+    color    = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+---
+
+## Using `probably`: `int_conformal_split()`
+
+The `probably` package implements exactly what we did by hand, but handles the
+bookkeeping automatically. It requires a fitted workflow and a
+calibration data frame.
+
+```{r probably_split}
+conformal_obj <- int_conformal_split(
+  object   = hs_wf,   # fitted workflow
+  cal_data = hs_cal   # separate calibration set
+)
+
+conformal_obj
+```
+
+```{r probably_predict}
+test_probably <- predict(conformal_obj, new_data = hs_test, level = 1 - alpha)
+
+test_probably %>%
+  bind_cols(hs_test %>% select(x3tgpatot)) %>%
+  mutate(covered = x3tgpatot >= .pred_lower & x3tgpatot <= .pred_upper) %>%
+  summarise(
+    coverage   = mean(covered),
+    mean_width = mean(.pred_upper - .pred_lower)
+  )
+```
+
+Same result as by hand. `probably` abstracts away the quantile calculation but
+the underlying procedure is identical.
+
+### Comparing Coverage Across α Levels
+
+The interval width and empirical coverage both depend on $\alpha$. More
+demanding coverage → wider intervals.
+
+```{r alpha_sweep}
+alpha_levels <- c(0.05, 0.10, 0.15, 0.20, 0.25, 0.30)
+
+alpha_results <- map_dfr(alpha_levels, function(a) {
+  preds <- predict(conformal_obj, new_data = hs_test, level = 1 - a)
+
+  preds %>%
+    bind_cols(hs_test %>% select(x3tgpatot)) %>%
+    mutate(covered = x3tgpatot >= .pred_lower & x3tgpatot <= .pred_upper) %>%
+    summarise(
+      alpha          = a,
+      target_cov     = 1 - a,
+      empirical_cov  = mean(covered),
+      mean_width     = mean(.pred_upper - .pred_lower)
+    )
+})
+
+alpha_results
+```
+
+```{r plot_alpha_sweep}
+alpha_results %>%
+  pivot_longer(c(empirical_cov, target_cov, mean_width),
+               names_to = "metric", values_to = "value") %>%
+  mutate(metric = recode(metric,
+    empirical_cov = "Empirical coverage",
+    target_cov    = "Target coverage",
+    mean_width    = "Interval width (GPA points)"
+  )) %>%
+  ggplot(aes(x = 1 - alpha, y = value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_color_manual(values = c(
+    "Empirical coverage"          = "steelblue",
+    "Target coverage"             = "grey50",
+    "Interval width (GPA points)" = "firebrick"
+  )) +
+  labs(
+    title    = "Coverage and interval width across \u03b1 levels",
+    subtitle = "Empirical coverage tracks the target; wider intervals are the cost of higher coverage",
+    x        = "Target coverage (1 \u2212 \u03b1)",
+    y        = "Value",
+    color    = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Part 3: Conformal Prediction Sets for Binary Outcomes
+
+For a binary classification problem the output is a prediction set, not an
+interval. A prediction set includes every class whose non-conformity score falls
+at or below $\hat{q}$.
+
+The non-conformity score for a classifier is:
+
+$$s_i = 1 - \hat{p}(y_i)$$
+
+where $\hat{p}(y_i)$ is the predicted probability assigned to the *true* class.
+If the model was confident and correct, $s_i \approx 0$. If the model was wrong
+or uncertain, $s_i$ is large.
+
+For each test observation, class $k$ is included in the prediction set if:
+
+$$1 - \hat{p}(k) \leq \hat{q}$$
+
+The result is one of:
+
+| Set | Interpretation |
+|-----|----------------|
+| `{1}` | Confident: model says "yes" |
+| `{0}` | Confident: model says "no" |
+| `{0, 1}` | Uncertain: both classes are plausible |
+| `{}` | Anomaly: model assigns low probability to every class |
+
+The size of the prediction set is a direct measure of individual-level
+uncertainty. A singleton is a confident prediction; a both-class set is an
+honest "I don't know."
+
+---
+
+## Three Simulated Models
+
+To see how the conformal machinery behaves, we'll simulate predicted
+probabilities for three extreme cases. No real data needed — we control the
+generating process exactly.
+
+```{r sim_setup}
+n_sim <- 1000   # total observations per scenario
+n_cal_sim <- 400
+n_tst_sim <- 600
+
+# True binary labels: ~50/50 split
+true_labels <- rbinom(n_sim, 1, 0.5)
+```
+
+### Scenario 1: A Good Model
+
+Predicted probabilities are high when the true label is 1 and low when it is 0.
+A few observations fall near the decision boundary, but most don't.
+
+```{r sim_good}
+good_probs <- if_else(
+  true_labels == 1,
+  rbeta(n_sim, shape1 = 8, shape2 = 2),   # most probs near 0.8–1.0
+  rbeta(n_sim, shape1 = 2, shape2 = 8)    # most probs near 0.0–0.2
+)
+
+sim_good <- tibble(
+  true_label = true_labels,
+  pred_prob  = good_probs,
+  scenario   = "Good model"
+)
+```
+
+### Scenario 2: An Indifferent Model
+
+The model has learned almost nothing. Predicted probabilities cluster near 0.5
+for almost everyone. This is the conformal equivalent of a shrug.
+
+```{r sim_indifferent}
+indiff_probs <- rbeta(n_sim, shape1 = 5, shape2 = 5)  # concentrated around 0.5
+
+sim_indifferent <- tibble(
+  true_label = true_labels,
+  pred_prob  = indiff_probs,
+  scenario   = "Indifferent model"
+)
+```
+
+### Scenario 3: A Wrong Model
+
+The model has learned the *inverse* of the truth. High predicted probabilities
+go to the observations that are actually 0, and vice versa.
+
+```{r sim_wrong}
+wrong_probs <- if_else(
+  true_labels == 1,
+  rbeta(n_sim, shape1 = 2, shape2 = 8),   # model says "low" when truth is 1
+  rbeta(n_sim, shape1 = 8, shape2 = 2)    # model says "high" when truth is 0
+)
+
+sim_wrong <- tibble(
+  true_label = true_labels,
+  pred_prob  = wrong_probs,
+  scenario   = "Wrong model"
+)
+```
+
+### Visualizing the Three Probability Distributions
+
+```{r plot_prob_dists}
+bind_rows(sim_good, sim_indifferent, sim_wrong) %>%
+  mutate(true_label = factor(true_label, labels = c("True = 0", "True = 1"))) %>%
+  ggplot(aes(x = pred_prob, fill = true_label)) +
+  geom_histogram(bins = 40, alpha = 0.7, color = "white",
+                 position = "identity") +
+  facet_wrap(~ scenario, ncol = 1) +
+  scale_fill_manual(values = c("steelblue", "firebrick")) +
+  labs(
+    title    = "Predicted probability distributions under three model scenarios",
+    subtitle = "Good model: well-separated. Indifferent: piled near 0.5. Wrong: inverted.",
+    x        = "Predicted P(outcome = 1)",
+    y        = "Count",
+    fill     = "True label"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+---
+
+## Applying Conformal Prediction to Each Scenario
+
+We'll write a helper function that takes a tibble with `true_label` and
+`pred_prob`, applies split conformal prediction at 90% coverage, and returns
+summary results.
+
+```{r conformal_helper}
+apply_conformal <- function(dat, alpha = 0.10) {
+  # Split into calibration and test
+  cal <- dat %>% slice_head(n = n_cal_sim)
+  tst <- dat %>% slice_tail(n = n_tst_sim)
+
+  # Non-conformity scores on calibration set
+  cal_scores <- cal %>%
+    mutate(
+      true_class_prob = if_else(true_label == 1, pred_prob, 1 - pred_prob),
+      score           = 1 - true_class_prob
+    )
+
+  # Quantile threshold
+  n_c     <- nrow(cal_scores)
+  q_lev   <- min(ceiling((n_c + 1) * (1 - alpha)) / n_c, 1)
+  q_hat   <- quantile(cal_scores$score, probs = q_lev)
+
+  # Build prediction sets on test data
+  tst_sets <- tst %>%
+    mutate(
+      include_1  = (1 - pred_prob)       <= q_hat,
+      include_0  = (1 - (1 - pred_prob)) <= q_hat,
+      set_size   = include_1 + include_0,
+      pred_set   = case_when(
+        include_1 & include_0   ~ "{0, 1}",
+        include_1 & !include_0  ~ "{1}",
+        !include_1 & include_0  ~ "{0}",
+        TRUE                    ~ "{}"
+      ),
+      covered    = (true_label == 1 & include_1) |
+                   (true_label == 0 & include_0)
+    )
+
+  list(
+    q_hat      = q_hat,
+    cal_scores = cal_scores,
+    tst_sets   = tst_sets
+  )
+}
+```
+
+```{r run_conformal}
+results_good   <- apply_conformal(sim_good)
+results_indiff <- apply_conformal(sim_indifferent)
+results_wrong  <- apply_conformal(sim_wrong)
+```
+
+---
+
+## Non-Conformity Score Distributions
+
+The shape of the calibration score distribution reveals the model's character
+before we ever look at test predictions.
+
+```{r plot_cal_scores}
+# Build a per-scenario q_hat lookup for the vlines
+qhat_lookup <- tibble(
+  scenario = c("Good model", "Indifferent model", "Wrong model"),
+  q_hat    = c(results_good$q_hat, results_indiff$q_hat, results_wrong$q_hat)
+)
+
+bind_rows(
+  results_good$cal_scores   %>% mutate(scenario = "Good model"),
+  results_indiff$cal_scores %>% mutate(scenario = "Indifferent model"),
+  results_wrong$cal_scores  %>% mutate(scenario = "Wrong model")
+) %>%
+  mutate(true_label = factor(true_label, labels = c("True = 0", "True = 1"))) %>%
+  ggplot(aes(x = score, fill = true_label)) +
+  geom_histogram(bins = 40, alpha = 0.7, color = "white", position = "identity") +
+  geom_vline(
+    data      = qhat_lookup,
+    aes(xintercept = q_hat),
+    color     = "firebrick",
+    linewidth = 1.2,
+    linetype  = "dashed",
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data        = qhat_lookup,
+    aes(x = q_hat, y = Inf,
+        label = paste0("q\u0302 = ", round(q_hat, 3))),
+    hjust       = -0.1,
+    vjust       = 1.5,
+    color       = "firebrick",
+    size        = 3.5,
+    inherit.aes = FALSE
+  ) +
+  facet_wrap(~ scenario, ncol = 1, scales = "free_y") +
+  scale_fill_manual(values = c("steelblue", "firebrick")) +
+  labs(
+    title    = "Calibration non-conformity scores by scenario and true label",
+    subtitle = "Good model: scores near 0. Indifferent: spread across range. Wrong: scores near 1.",
+    x        = "Non-conformity score  (1 \u2212 predicted probability of true class)",
+    y        = "Count",
+    fill     = "True label"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+**Reading the distributions:**
+
+- **Good model**: Scores are concentrated near zero. The model correctly assigns
+  high probability to the true class, so $1 - \hat{p}(y_i)$ is almost always
+  small. $\hat{q}$ will be low, and most prediction sets will be singletons.
+
+- **Indifferent model**: Scores spread across the full range, often around 0.5.
+  The model has no strong conviction about any observation. $\hat{q}$ will be
+  pushed high to achieve 90% coverage, and most prediction sets will include
+  both classes.
+
+- **Wrong model**: Scores are piled near 1. The model is confidently wrong —
+  it assigns low probability to the true class almost always. The calibration
+  set forces $\hat{q}$ near 1 to maintain coverage, meaning both classes end
+  up in nearly every prediction set.
+
+```{r print_qhats}
+tibble(
+  scenario = c("Good model", "Indifferent model", "Wrong model"),
+  q_hat    = c(results_good$q_hat, results_indiff$q_hat, results_wrong$q_hat)
+)
+```
+
+Here's what to notice: for the good model, the qhat is low, since the non-conformity scores are low. This means that many more of the cases are going to end up in their respective conformal sets, and many fewer will end up in the "indifferent" zone. 
+
+---
+
+## Predictions, Actuals, and Conformal Sets
+
+The plot below shows a sample of test observations for each scenario. Each point
+is one observation: the x-axis is the model's predicted probability, the y-axis
+is the true label (jittered so points don't stack), and the color shows which
+conformal prediction set that observation received. The dashed vertical lines
+mark the boundaries of the uncertain zone — observations whose predicted
+probability falls between the two lines receive the `{0, 1}` set.
+
+The boundaries are derived directly from $\hat{q}$: a prediction set includes
+class 1 when $1 - \hat{p}(1) \leq \hat{q}$, i.e. $\hat{p}(1) \geq 1 - \hat{q}$,
+and class 0 when $\hat{p}(1) \leq \hat{q}$. So the uncertain zone is
+$[\hat{q},\; 1 - \hat{q}]$ on the predicted probability axis.
+
+```{r plot_predictions_actuals}
+
+bind_rows(
+  results_good$tst_sets   %>% mutate(scenario = "Good model",
+                                     q_hat = results_good$q_hat),
+  results_indiff$tst_sets %>% mutate(scenario = "Indifferent model",
+                                     q_hat = results_indiff$q_hat),
+  results_wrong$tst_sets  %>% mutate(scenario = "Wrong model",
+                                     q_hat = results_wrong$q_hat)
+) %>%
+  slice_sample(n = 150, by = scenario) %>%
+  mutate(
+    true_label_jit = true_label + runif(n(), -0.15, 0.15),
+    pred_set = factor(pred_set, levels = c("{1}", "{0}", "{0, 1}", "{}"))
+  ) %>%
+  ggplot(aes(x = pred_prob, y = true_label_jit, color = pred_set)) +
+  geom_point(alpha = 0.6, size = 1.8) +
+  # lower boundary: pred_prob = q_hat  (class 0 boundary)
+  geom_vline(
+    data        = qhat_lookup,
+    aes(xintercept = q_hat),
+    color       = "grey40",
+    linetype    = "dashed",
+    linewidth   = 0.8,
+    inherit.aes = FALSE
+  ) +
+  # upper boundary: pred_prob = 1 - q_hat  (class 1 boundary)
+  geom_vline(
+    data        = qhat_lookup,
+    aes(xintercept = 1 - q_hat),
+    color       = "grey40",
+    linetype    = "dashed",
+    linewidth   = 0.8,
+    inherit.aes = FALSE
+  ) +
+  facet_wrap(~ scenario, ncol = 1) +
+  scale_color_manual(
+    values = c(
+      "{1}"    = "#2c7bb6",
+      "{0}"    = "#4dac26",
+      "{0, 1}" = "#d7191c",
+      "{}"     = "grey50"
+    )
+  ) +
+  scale_y_continuous(
+    breaks = c(0, 1),
+    labels = c("True = 0", "True = 1")
+  ) +
+  labs(
+    title    = "Predicted probabilities, true labels, and conformal prediction sets",
+    subtitle = "Points between the dashed lines fall in the uncertain zone and receive {0, 1}",
+    x        = "Predicted P(outcome = 1)",
+    y        = "True label (jittered)",
+    color    = "Prediction set"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+**Reading the plot by scenario:**
+
+- **Good model**: Blue (`{1}`) and green (`{0}`) points cluster where they
+  should — high predicted probabilities pair with true 1s, low with true 0s.
+  The uncertain zone between the dashed lines is narrow, and few points fall
+  there. Misclassified points (wrong color for their y position) are rare.
+
+- **Indifferent model**: Almost everything falls between the dashed lines and
+  receives `{0, 1}` (red). The model's predicted probabilities don't separate
+  the classes, so conformal prediction can't either. Both boundaries are close
+  to 0.5, making the uncertain zone wide.
+
+- **Wrong model**: The pattern is the mirror image of the good model — but the
+  colors are swapped. High predicted probabilities pair with true 0s, and vice
+  versa. The model is confidently wrong. Despite this, conformal prediction
+  still achieves 90% coverage by forcing the threshold high enough that both
+  classes end up in nearly every prediction set.
+
+
+## Prediction Set Composition
+
+```{r pred_set_summary}
+set_summary <- bind_rows(
+  results_good$tst_sets   %>% mutate(scenario = "Good model"),
+  results_indiff$tst_sets %>% mutate(scenario = "Indifferent model"),
+  results_wrong$tst_sets  %>% mutate(scenario = "Wrong model")
+) %>%
+  group_by(scenario, pred_set) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(pct = n / sum(n), .by = scenario)
+
+set_summary %>%
+  pivot_wider(names_from = pred_set, values_from = c(n, pct),
+              values_fill = 0) %>%
+  arrange(scenario)
+```
+
+```{r plot_set_composition}
+set_summary %>%
+  ggplot(aes(x = scenario, y = pct, fill = pred_set)) +
+  geom_col(position = "stack", alpha = 0.85) +
+  scale_fill_manual(
+    values = c(
+      "{1}"    = "#2c7bb6",
+      "{0}"    = "#4dac26",
+      "{0, 1}" = "#d7191c",
+      "{}"     = "grey60"
+    )
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title    = "Prediction set composition under three model scenarios",
+    subtitle = "90% target coverage",
+    x        = NULL,
+    y        = "Proportion of test observations",
+    fill     = "Prediction set"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+**What to notice:**
+
+- **Good model**: Mostly singleton sets (`{1}` or `{0}`). The model is confident
+  enough that conformal prediction endorses single-class predictions for most
+  students.
+
+- **Indifferent model**: Mostly `{0, 1}`. The model provides no discrimination,
+  so conformal prediction honestly reports that both outcomes are plausible for
+  nearly every observation. This is not a failure of conformal prediction — it
+  is conformal prediction working correctly, faithfully reflecting the model's
+  lack of information.
+
+- **Wrong model**: Also mostly `{0, 1}`, but for a different reason. The model
+  is systematically wrong, so $\hat{q}$ must be set high enough to cover the
+  cases the model gets wrong — which forces both classes into most prediction
+  sets. The empty set `{}` may appear here for observations where the model's
+  confidence in the wrong answer is so extreme that even both classes can't be
+  included.
+
+---
+
+## Coverage Verification
+
+The 90% guarantee should hold for all three scenarios — good, bad, or ugly.
+
+```{r coverage_verification}
+bind_rows(
+  results_good$tst_sets   %>% mutate(scenario = "Good model"),
+  results_indiff$tst_sets %>% mutate(scenario = "Indifferent model"),
+  results_wrong$tst_sets  %>% mutate(scenario = "Wrong model")
+) %>%
+  group_by(scenario) %>%
+  summarise(
+    empirical_coverage = mean(covered),
+    target_coverage    = 0.90,
+    pct_singleton      = mean(set_size == 1),
+    pct_both           = mean(set_size == 2),
+    pct_empty          = mean(set_size == 0),
+    .groups            = "drop"
+  )
+```
+
+Coverage is at or above 90% in all three scenarios. This is the key
+theoretical point: **conformal prediction guarantees coverage regardless of
+model quality**. What changes between the three scenarios is not coverage — it's
+*efficiency*. The good model achieves coverage with small, informative prediction
+sets. The bad models also achieve coverage, but only by making the sets so large
+(both classes) that they convey almost no information.
+
+---
+
+## The Efficiency–Coverage Tradeoff Across Scenarios
+
+```{r efficiency_comparison}
+alpha_grid <- tibble(alpha = seq(0.05, 0.45, by = 0.05))
+
+compute_efficiency <- function(res, scenario_name, alpha_vec) {
+  cal_sc <- res$cal_scores
+
+  map_dfr(alpha_vec, function(a) {
+    n_c   <- nrow(cal_sc)
+    q_lev <- min(ceiling((n_c + 1) * (1 - a)) / n_c, 1)
+    q_v   <- quantile(cal_sc$score, probs = q_lev)
+
+    res$tst_sets %>%
+      mutate(
+        inc1     = (1 - pred_prob)       <= q_v,
+        inc0     = (1 - (1 - pred_prob)) <= q_v,
+        covered  = (true_label == 1 & inc1) | (true_label == 0 & inc0),
+        set_size = inc1 + inc0
+      ) %>%
+      summarise(
+        alpha          = a,
+        target_cov     = 1 - a,
+        empirical_cov  = mean(covered),
+        pct_singleton  = mean(set_size == 1),
+        pct_both       = mean(set_size == 2),
+        scenario       = scenario_name
+      )
+  })
+}
+
+efficiency_results <- bind_rows(
+  compute_efficiency(results_good,   "Good model",        alpha_grid$alpha),
+  compute_efficiency(results_indiff, "Indifferent model", alpha_grid$alpha),
+  compute_efficiency(results_wrong,  "Wrong model",       alpha_grid$alpha)
+)
+```
+
+```{r plot_efficiency}
+p1 <- efficiency_results %>%
+  ggplot(aes(x = target_cov, y = empirical_cov, color = scenario)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2) +
+  geom_abline(linetype = "dashed", color = "grey50") +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = c(
+    "Good model"        = "#2c7bb6",
+    "Indifferent model" = "#fdae61",
+    "Wrong model"       = "#d7191c"
+  )) +
+  labs(title = "Empirical coverage vs. target",
+       x = "Target coverage", y = "Empirical coverage", color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+p2 <- efficiency_results %>%
+  ggplot(aes(x = target_cov, y = pct_singleton, color = scenario)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = c(
+    "Good model"        = "#2c7bb6",
+    "Indifferent model" = "#fdae61",
+    "Wrong model"       = "#d7191c"
+  )) +
+  labs(title = "Efficiency: % singleton prediction sets",
+       subtitle = "Only the good model produces many confident singletons",
+       x = "Target coverage", y = "% singleton sets", color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+p1 + p2 + plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+The left panel shows that all three models achieve the target coverage — the
+theoretical guarantee holds in every case. The right panel is where the story
+diverges: only the good model produces many confident singleton predictions.
+The indifferent and wrong models must hedge by including both classes for most
+observations, which is technically valid but practically useless.
+
+This illustrates a key point: **conformal prediction is an honest accounting
+system. It cannot improve a bad model — it can only honestly report how bad it is.**
+
+---
+
+# Summary
+
+## Regression Conformal Intervals
+
+| Step | What we did |
+|------|-------------|
+| 1. Calibration scores | Compute $|y_i - \hat{y}_i|$ on held-out calibration data |
+| 2. Quantile threshold | Find $\hat{q}$ at the $\lceil(n+1)(1-\alpha)\rceil / n$ quantile |
+| 3. Test intervals | $\hat{y}_{\text{new}} \pm \hat{q}$ for every test observation |
+| 4. `probably` | `int_conformal_split()` automates steps 1–3 |
+
+## Classification Conformal Sets
+
+| Step | What we did |
+|------|-------------|
+| 1. Calibration scores | Compute $1 - \hat{p}(y_i)$ on held-out calibration data |
+| 2. Quantile threshold | Same formula as regression |
+| 3. Test sets | Include class $k$ if $1 - \hat{p}(k) \leq \hat{q}$ |
+
+## What the Three Scenarios Teach
+
+| Model | Score distribution | $\hat{q}$ | Set composition | Interpretation |
+|-------|--------------------|-----------|-----------------|----------------|
+| Good | Near 0 | Low | Mostly singletons | Confident and correct |
+| Indifferent | Spread, ~0.5 | Moderate–high | Mostly both classes | Honest uncertainty |
+| Wrong | Near 1 | High | Mostly both classes | Honest about failure |
+
+The coverage guarantee is unconditional. The **efficiency** of the prediction
+sets — how often they reduce to a single class — is what reflects model quality.
+A conformal interval never lies about coverage, but it also never flatters a
+bad model.
