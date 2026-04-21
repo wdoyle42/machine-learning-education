@@ -27,13 +27,13 @@ Glmnet
 
 Medium Datasets
 
-Small Features, <50
+#Small Features, <50
 
 Class and Regress Tree
 
 Random Forests
 
-Large Features, >50
+#Large Features, >50
 
 Glmnet, (binary outcome =SVM)
 
@@ -52,6 +52,8 @@ Continuous: Glmnet, Xgboost
 
 Moderate/Severe missing data problem= Random Forests
 
+
+https://pmc.ncbi.nlm.nih.gov/articles/PMC11688588/
 
 
 
