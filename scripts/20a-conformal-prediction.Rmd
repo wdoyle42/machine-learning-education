@@ -11,11 +11,8 @@ library(tidymodels)
 library(janitor)
 library(probably)
 library(patchwork)
-
-
 ```
 
----
 
 # Part 1: The Problem with Point Predictions
 
@@ -120,8 +117,6 @@ hs_wf <- workflow() %>%
 ```
 
 Face validity check — RMSE on the calibration set should look reasonable:
-
-
 
 ## By Hand: Building Conformal Intervals from Scratch
 

@@ -195,7 +195,7 @@ enet_grid <- grid_space_filling(
 ```
 
 ```{r tune}
-fit_model <- TRUE
+fit_model <- FALSE
 
 if (fit_model) {
   tune_standard <- wf_standard %>%
